@@ -1,6 +1,7 @@
 import streamlit as st
 from fpdf import FPDF
 import os
+import unicodedata
 
 # --- 1. CONFIGURACIÓN DE RUTAS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -9,7 +10,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 # --- 2. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Prototipo Funcional:** Guías personalizadas con datos del paciente.")
+st.markdown("**Prototipo Funcional:** Guías con texto SUPERIOR y Datos Completos para Braille.")
 
 # Verificación de carpeta
 if os.path.exists(ASSETS_DIR):
@@ -28,7 +29,13 @@ def ruta_imagen_segura(nombre_objetivo):
             return os.path.join(ASSETS_DIR, archivo_real)
     return None
 
-# --- 4. MAPEO DE DATOS ---
+# --- 4. FUNCIÓN LIMPIEZA TEXTO (Para Braille) ---
+def limpiar_texto(texto):
+    # Elimina tildes y caracteres especiales para facilitar el Braille básico
+    texto = ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+    return texto.upper()
+
+# --- 5. MAPEO DE DATOS ---
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF",
     "Masticar": "43.GIF",
@@ -85,31 +92,22 @@ MAPA_ALERTAS = {
     "No leche ni lácteos": "23.GIF"
 }
 
-# --- 5. MOTOR DE GENERACIÓN PDF (CORREGIDO CON PACIENTE) ---
+# --- 6. MOTOR DE GENERACIÓN PDF ---
 def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_alertas, es_ciego):
     pdf = FPDF()
     pdf.add_page()
     
-    # === A. ENCABEZADO (Ajustado para incluir Paciente) ===
+    # A. Encabezado
     pdf.set_font("Arial", "B", 24)
-    # 1. Medicamento
-    pdf.cell(0, 12, txt=f"{medicamento.upper()}", ln=True, align='C')
+    pdf.cell(0, 15, txt=f"{medicamento.upper()}", ln=True, align='C')
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, txt=f"Dosis: {dosis.upper()}", ln=True, align='C')
+    pdf.line(10, 35, 200, 35)
     
-    # 2. Nombre del Paciente (NUEVO)
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()}", ln=True, align='C')
+    # B. Sección Principal (Vía + Frecuencia)
+    y_bloque_1 = 45 
     
-    # 3. Dosis
-    pdf.set_font("Arial", "B", 14)
-    pdf.cell(0, 10, txt=f"DOSIS: {dosis.upper()}", ln=True, align='C')
-    
-    # Línea separadora (Bajada a Y=40 para dar espacio)
-    pdf.line(10, 42, 200, 42)
-    
-    # === B. SECCIÓN PRINCIPAL (VÍA + FRECUENCIA) ===
-    y_bloque_1 = 50  # Empezamos en 50
-    
-    # --- VÍA (Izquierda) ---
+    # --- Columna Izquierda: VÍA ---
     pdf.set_xy(20, y_bloque_1)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C')
@@ -118,14 +116,14 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_via:
         ruta = ruta_imagen_segura(archivo_via)
         if ruta:
-            # Texto
+            # Texto Arriba
             pdf.set_xy(20, y_bloque_1 + 12)
             pdf.set_font("Arial", "B", 10)
             pdf.multi_cell(60, 4, txt=via_key.upper(), align='C')
-            # Imagen
+            # Imagen Abajo
             pdf.image(ruta, x=35, y=y_bloque_1 + 25, w=30)
     
-    # --- FRECUENCIA (Derecha) ---
+    # --- Columna Centro: FRECUENCIA ---
     pdf.set_xy(100, y_bloque_1)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(60, 10, txt="HORARIO", align='C')
@@ -134,16 +132,15 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_frec:
         ruta = ruta_imagen_segura(archivo_frec)
         if ruta:
-            # Texto
+            # Texto Arriba
             pdf.set_xy(100, y_bloque_1 + 12)
             pdf.set_font("Arial", "B", 10)
             pdf.multi_cell(60, 4, txt=frecuencia_key.upper(), align='C')
-            # Imagen
+            # Imagen Abajo
             pdf.image(ruta, x=115, y=y_bloque_1 + 25, w=30)
 
-    # === C. ALERTAS (Grid) ===
-    y_alertas = 115 # Bajamos el inicio de alertas para evitar choques
-    
+    # C. Sección Alertas (Grid)
+    y_alertas = 110 
     pdf.set_xy(10, y_alertas)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES:", ln=True, align='L')
@@ -173,22 +170,50 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
                 x_curr += 45
                 count += 1
 
-    # === D. PIE DE PÁGINA (BRAILLE) ===
+    # D. Zona Braille (Datos Completos)
     if es_ciego:
-        pdf.set_y(240)
+        pdf.set_y(210) # Subimos un poco para dar espacio al texto
         pdf.set_font("Arial", "", 10)
         pdf.cell(0, 5, txt="- - - - - - CORTE AQUÍ PARA GUÍA TÁCTIL - - - - - -", ln=True, align='C')
-        pdf.ln(2)
-        pdf.set_font("Arial", "B", 10)
-        pdf.cell(0, 5, txt="INSTRUCCIÓN ESPEJO: Punzar por el reverso.", ln=True, align='C')
         
         pdf.ln(5)
-        pdf.set_font("Courier", "B", 30)
-        pdf.cell(0, 15, txt=". :  . :  .. :  .", ln=True, align='C')
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 8, txt="TEXTO PARA TRANSCRIPCIÓN BRAILLE:", ln=True, align='L')
+        
+        # 1. Construir la cadena de texto completa
+        # Concatenamos todo lo que el paciente necesita saber
+        texto_alertas = ", ".join(lista_alertas).upper() if lista_alertas else "NINGUNA"
+        texto_braille_raw = (
+            f"MED: {medicamento}\n"
+            f"DOSIS: {dosis}\n"
+            f"TOMA: {frecuencia_key}\n"
+            f"ALERTAS: {texto_alertas}"
+        )
+        
+        # Limpiamos tildes para evitar confusión
+        texto_final_braille = limpiar_texto(texto_braille_raw)
+        
+        # 2. Imprimir el texto legible para el farmacéutico
+        pdf.set_font("Courier", "", 11) # Fuente monoespaciada tipo código
+        pdf.multi_cell(0, 5, txt=texto_final_braille, border=1, align='L')
+        
+        pdf.ln(2)
+        pdf.set_font("Arial", "I", 8)
+        pdf.cell(0, 5, txt="(Instrucción: Utilice este texto como guía para punzar la etiqueta adhesiva)", ln=True, align='L')
+
+        # 3. Simulación Visual (Opcional, para que se vea 'bonito' en la tesis)
+        pdf.ln(2)
+        pdf.set_font("Courier", "B", 24)
+        pdf.cell(0, 10, txt=". : . : .. : .  : .. : .", ln=True, align='C')
+
+    # Metadatos Paciente al final
+    pdf.set_y(-15)
+    pdf.set_font("Arial", "I", 8)
+    pdf.cell(0, 10, txt=f"Paciente: {paciente.upper()} | Generado por SMEFI", align='C')
 
     return bytes(pdf.output(dest='S'))
 
-# --- 6. INTERFAZ STREAMLIT ---
+# --- 7. INTERFAZ STREAMLIT ---
 col_logo, col_titulo = st.columns([1, 4])
 with col_titulo:
     st.subheader("Configuración del Tratamiento")
@@ -196,7 +221,6 @@ with col_titulo:
 with st.container(border=True):
     c1, c2 = st.columns(2)
     with c1:
-        # AQUI SE CAPTURA EL NOMBRE
         nombre = st.text_input("Paciente", "Maria Gonzales")
         med = st.text_input("Medicamento", "AMOXICILINA")
     with c2:
@@ -242,7 +266,6 @@ with st.container(border=True):
 
 if btn_generar:
     try:
-        # Pasamos 'nombre' a la función
         pdf_bytes = generar_pdf(nombre, med, dosis, via_sel, frec_sel, alertas_sel, es_ciego)
         st.success("✅ ¡Guía generada correctamente!")
         st.download_button(
