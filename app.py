@@ -18,26 +18,23 @@ if os.path.exists(ASSETS_DIR):
 else:
     st.sidebar.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}")
 
-# --- 3. FUNCIÓN DE BÚSQUEDA INTELIGENTE (TOLERANTE A FALLOS) ---
+# --- 3. FUNCIÓN DE BÚSQUEDA INTELIGENTE ---
 def ruta_imagen_segura(nombre_objetivo):
     # 1. Búsqueda exacta
     ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
     if os.path.exists(ruta_exacta):
         return ruta_exacta
     
-    # 2. Búsqueda insensible a mayúsculas/minúsculas (ej. .GIF vs .gif)
-    # También maneja si el archivo tiene un 0 extra o le falta
+    # 2. Búsqueda insensible a mayúsculas/minúsculas y ceros
     for archivo_real in os.listdir(ASSETS_DIR):
-        # Comparamos nombres base sin importar mayúsculas
         if archivo_real.lower() == nombre_objetivo.lower():
             return os.path.join(ASSETS_DIR, archivo_real)
-            
     return None
 
-# --- 4. MAPEO EXACTO (SEGÚN TU LISTA OFICIAL) ---
-# NOTA: Usamos la extensión .GIF en mayúscula para coincidir con tus archivos
+# --- 4. MAPEO EXACTO (Texto Descriptivo -> Nombre Archivo) ---
+# La 'Clave' (Izquierda) es el texto que saldrá en el PDF junto al icono.
 
-# A. Vía de Administración (Icono Principal)
+# A. Vía de Administración
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF",
     "Masticar": "43.GIF",
@@ -47,11 +44,11 @@ MAPA_VIA = {
     "Inhalador": "71.GIF",
     "Spray Nasal": "77.GIF",
     "Gotas Nariz": "09.GIF",
-    "Gotas Ojos": "29.GIF",
+    "Gotas Ojos (Párpado inf.)": "29.GIF",
     "Gotas Oído": "31.GIF",
     "Inyección": "61.GIF",
     "Vía Rectal": "27.GIF",
-    "Vía Vaginal": "25.GIF", # O 66 según lista
+    "Vía Vaginal": "25.GIF",
     "Gárgaras": "58.GIF"
 }
 
@@ -65,38 +62,38 @@ MAPA_FRECUENCIA = {
     "3 veces al día": "16.GIF",
     "3 veces al día (Con comidas)": "14.GIF",
     "4 veces al día": "15.GIF",
-    "4 veces al día (Con comidas)": "13.GIF", # + dormir
+    "4 veces al día (Con comidas)": "13.GIF",
     "1 hora ANTES de comidas": "05.GIF",
     "1 hora DESPUÉS de comidas": "06.GIF",
     "2 horas ANTES de comidas": "07.GIF",
     "2 horas DESPUÉS de comidas": "08.GIF",
     "Con alimentos": "18.GIF",
-    "Estómago vacío (Sin alimentos)": "19.GIF" # No tomar con alimentos
+    "Estómago vacío (Sin alimentos)": "19.GIF"
 }
 
-# C. Precauciones y Alertas (Selección Múltiple)
+# C. Precauciones y Alertas
 MAPA_ALERTAS = {
-    "No alcohol": "40.GIF",
+    "No consumir alcohol": "40.GIF",
     "No conducir (Somnolencia)": "50.GIF",
     "No conducir (Mareo)": "72.GIF",
-    "No triturar/romper": "33.GIF",
+    "No triturar ni romper": "33.GIF",
     "No masticar": "48.GIF",
     "Agitar vigorosamente": "39.GIF",
     "Refrigerar": "20.GIF",
     "No refrigerar": "52.GIF",
     "No congelar": "51.GIF",
-    "Proteger de luz solar": "69.GIF", # O 12
+    "Proteger de luz solar": "69.GIF",
     "No embarazo": "34.GIF",
     "No lactancia": "36.GIF",
-    "No compartir": "54.GIF",
+    "No compartir medicamento": "54.GIF",
     "No fumar": "55.GIF",
     "Tomar agua adicional": "57.GIF",
-    "Peligro/Venenoso": "81.GIF",
+    "Peligro / Venenoso": "81.GIF",
     "Causa somnolencia": "24.GIF",
-    "No leche/lácteos": "23.GIF"
+    "No leche ni lácteos": "23.GIF"
 }
 
-# --- 5. MOTOR DE GENERACIÓN PDF ---
+# --- 5. MOTOR DE GENERACIÓN PDF MEJORADO ---
 def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_alertas, es_ciego):
     pdf = FPDF()
     pdf.add_page()
@@ -120,10 +117,16 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_via:
         ruta = ruta_imagen_segura(archivo_via)
         if ruta:
+            # 1. Imagen
             pdf.image(ruta, x=30, y=y_start+10, w=30)
+            # 2. Texto Descriptivo (USP Requirement)
+            pdf.set_xy(20, y_start+42) # Debajo de la imagen
+            pdf.set_font("Arial", "B", 10)
+            # Usamos via_key que contiene el texto "Vía Oral (Tragar)"
+            pdf.multi_cell(50, 5, txt=via_key, align='C')
     
     # --- Columna Centro: FRECUENCIA ---
-    pdf.set_xy(80, y_start)
+    pdf.set_xy(90, y_start) # Movido un poco a la derecha
     pdf.set_font("Arial", "B", 12)
     pdf.cell(50, 10, txt="HORARIO", align='C')
     
@@ -131,10 +134,15 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_frec:
         ruta = ruta_imagen_segura(archivo_frec)
         if ruta:
-            pdf.image(ruta, x=90, y=y_start+10, w=30)
+            # 1. Imagen
+            pdf.image(ruta, x=100, y=y_start+10, w=30)
+            # 2. Texto Descriptivo
+            pdf.set_xy(90, y_start+42)
+            pdf.set_font("Arial", "B", 10)
+            pdf.multi_cell(50, 5, txt=frecuencia_key, align='C')
 
-    # --- Sección Inferior: ALERTAS (Grid dinámico) ---
-    y_alertas = y_start + 60
+    # --- Sección Inferior: ALERTAS (Grid dinámico con texto) ---
+    y_alertas = y_start + 70 # Bajamos un poco más para dar espacio al texto de arriba
     pdf.set_xy(10, y_alertas)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES IMPORTANTES:", ln=True, align='L')
@@ -148,18 +156,21 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
         if nombre_archivo:
             ruta = ruta_imagen_segura(nombre_archivo)
             if ruta:
-                # Si llegamos a 4 iconos, bajamos de línea
+                # Control de filas (Máximo 4 por fila)
                 if count == 4: 
                     x_icon = 20
-                    y_icon += 40
+                    y_icon += 50 # Más espacio vertical para el texto
                     count = 0
                 
-                pdf.image(ruta, x=x_icon, y=y_icon, w=30)
+                # 1. Imagen
+                pdf.image(ruta, x=x_icon, y=y_icon, w=25)
                 
-                # Etiqueta pequeña debajo del icono
-                pdf.set_font("Arial", "", 7)
-                pdf.set_xy(x_icon-5, y_icon+30)
-                pdf.multi_cell(40, 3, txt=alerta_key, align='C')
+                # 2. Texto Descriptivo (USP Requirement)
+                pdf.set_font("Arial", "", 8)
+                # Posicionamos texto debajo de la imagen
+                pdf.set_xy(x_icon-5, y_icon+26) 
+                # Width 35 para que el texto tenga espacio y no se corte
+                pdf.multi_cell(35, 3, txt=alerta_key, align='C')
                 
                 x_icon += 45
                 count += 1
@@ -177,7 +188,6 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
         pdf.set_font("Courier", "B", 30)
         pdf.cell(0, 15, txt=". :  . :  .. :  .", ln=True, align='C')
 
-    # Retorno en bytes para evitar error de Streamlit
     return bytes(pdf.output(dest='S'))
 
 # --- 6. INTERFAZ STREAMLIT ---
@@ -204,16 +214,20 @@ with st.container(border=True):
         via_sel = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
         frec_sel = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
         
-        # Previsualización Pequeña
+        # Previsualización con Texto
         cols_prev = st.columns(2)
         if via_sel:
             ruta = ruta_imagen_segura(MAPA_VIA[via_sel])
-            if ruta: cols_prev[0].image(ruta, width=70, caption="Vía")
+            if ruta: 
+                cols_prev[0].image(ruta, width=70)
+                cols_prev[0].caption(via_sel) # Muestra texto en pantalla también
         if frec_sel:
             archivo = MAPA_FRECUENCIA.get(frec_sel)
             if archivo:
                 ruta = ruta_imagen_segura(archivo)
-                if ruta: cols_prev[1].image(ruta, width=70, caption="Frecuencia")
+                if ruta: 
+                    cols_prev[1].image(ruta, width=70)
+                    cols_prev[1].caption(frec_sel)
 
     with c4:
         st.warning("⚠️ Seguridad del Paciente")
@@ -225,8 +239,9 @@ with st.container(border=True):
             for i, alerta in enumerate(alertas_sel):
                 ruta = ruta_imagen_segura(MAPA_ALERTAS[alerta])
                 if ruta:
-                    # Usamos módulo para distribuir en columnas
-                    cols_alerta[i % 4].image(ruta, width=50)
+                    col = cols_alerta[i % 4]
+                    col.image(ruta, width=50)
+                    col.caption(alerta) # Texto pequeño debajo
 
     st.write("")
     btn_generar = st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True)
