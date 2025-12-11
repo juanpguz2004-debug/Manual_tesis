@@ -9,7 +9,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 # --- 2. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Prototipo Funcional:** Generación de guías con estándar USP (Negrita/Mayúscula).")
+st.markdown("**Prototipo Funcional:** Guías con texto SUPERIOR para máxima legibilidad.")
 
 # Verificación de carpeta
 if os.path.exists(ASSETS_DIR):
@@ -23,15 +23,12 @@ def ruta_imagen_segura(nombre_objetivo):
     ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
     if os.path.exists(ruta_exacta):
         return ruta_exacta
-    
     for archivo_real in os.listdir(ASSETS_DIR):
         if archivo_real.lower() == nombre_objetivo.lower():
             return os.path.join(ASSETS_DIR, archivo_real)
     return None
 
 # --- 4. MAPEO DE DATOS ---
-
-# A. Vía de Administración
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF",
     "Masticar": "43.GIF",
@@ -49,7 +46,6 @@ MAPA_VIA = {
     "Gárgaras": "58.GIF"
 }
 
-# B. Frecuencia
 MAPA_FRECUENCIA = {
     "--- Seleccionar ---": None,
     "Mañana (AM)": "67.gif",
@@ -68,7 +64,6 @@ MAPA_FRECUENCIA = {
     "Estómago vacío": "19.GIF"
 }
 
-# C. Precauciones
 MAPA_ALERTAS = {
     "No consumir alcohol": "40.GIF",
     "No conducir (Somnolencia)": "50.GIF",
@@ -90,23 +85,25 @@ MAPA_ALERTAS = {
     "No leche ni lácteos": "23.GIF"
 }
 
-# --- 5. MOTOR DE GENERACIÓN PDF (CORREGIDO) ---
+# --- 5. MOTOR DE GENERACIÓN PDF (TEXTO ARRIBA) ---
 def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_alertas, es_ciego):
     pdf = FPDF()
     pdf.add_page()
     
-    # A. Encabezado
+    # Encabezado
     pdf.set_font("Arial", "B", 24)
     pdf.cell(0, 15, txt=f"{medicamento.upper()}", ln=True, align='C')
     pdf.set_font("Arial", "B", 16)
     pdf.cell(0, 10, txt=f"Dosis: {dosis.upper()}", ln=True, align='C')
     pdf.line(10, 35, 200, 35)
     
-    # B. Sección Principal (Vía + Frecuencia)
-    y_start = 45 
+    # ============================
+    # SECCIÓN 1: VÍA Y FRECUENCIA
+    # ============================
+    y_bloque_1 = 45 
     
-    # --- Columna Izquierda: VÍA ---
-    pdf.set_xy(20, y_start)
+    # --- VÍA (Izquierda) ---
+    pdf.set_xy(20, y_bloque_1)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C')
     
@@ -114,16 +111,17 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_via:
         ruta = ruta_imagen_segura(archivo_via)
         if ruta:
-            # 1. Imagen (30x30)
-            pdf.image(ruta, x=35, y=y_start+10, w=30)
-            # 2. Texto (AJUSTADO: Negrita, Mayúscula, Espacio extra)
-            pdf.set_xy(20, y_start+42) 
-            pdf.set_font("Arial", "B", 10) 
-            # .upper() convierte a mayúsculas
-            pdf.multi_cell(60, 5, txt=via_key.upper(), align='C')
+            # 1. TEXTO (Arriba)
+            pdf.set_xy(20, y_bloque_1 + 12)
+            pdf.set_font("Arial", "B", 10)
+            pdf.multi_cell(60, 4, txt=via_key.upper(), align='C')
+            
+            # 2. IMAGEN (Abajo del texto)
+            # Y=65 fijo para asegurar que no choque con la 2da línea de texto
+            pdf.image(ruta, x=35, y=y_bloque_1 + 25, w=30)
     
-    # --- Columna Centro: FRECUENCIA ---
-    pdf.set_xy(100, y_start)
+    # --- FRECUENCIA (Derecha) ---
+    pdf.set_xy(100, y_bloque_1)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(60, 10, txt="HORARIO", align='C')
     
@@ -131,19 +129,25 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_frec:
         ruta = ruta_imagen_segura(archivo_frec)
         if ruta:
-            pdf.image(ruta, x=115, y=y_start+10, w=30)
-            pdf.set_xy(100, y_start+42)
+            # 1. TEXTO (Arriba)
+            pdf.set_xy(100, y_bloque_1 + 12)
             pdf.set_font("Arial", "B", 10)
-            pdf.multi_cell(60, 5, txt=frecuencia_key.upper(), align='C')
+            pdf.multi_cell(60, 4, txt=frecuencia_key.upper(), align='C')
+            
+            # 2. IMAGEN (Abajo)
+            pdf.image(ruta, x=115, y=y_bloque_1 + 25, w=30)
 
-    # --- Sección Inferior: ALERTAS (Grid Corregido) ---
-    y_alertas = y_start + 70 
+    # ============================
+    # SECCIÓN 2: ALERTAS (Grid)
+    # ============================
+    # Empezamos bastante más abajo (Y=110) para dar espacio a los iconos de arriba
+    y_alertas = 110 
     
     pdf.set_xy(10, y_alertas)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES:", ln=True, align='L')
     
-    x_icon = 20
+    x_curr = 20
     y_curr = y_alertas + 15
     count = 0
     
@@ -154,24 +158,20 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
             if ruta:
                 # Salto de línea si hay más de 4 iconos
                 if count == 4: 
-                    x_icon = 20
-                    y_curr += 65
+                    x_curr = 20
+                    y_curr += 55 # Espacio vertical entre filas
                     count = 0
                 
-                # 1. Imagen (25x25)
-                pdf.image(ruta, x=x_icon, y=y_curr, w=25)
+                # 1. TEXTO (Arriba, centrado en su columna)
+                pdf.set_font("Arial", "B", 8)
+                pdf.set_xy(x_curr - 5, y_curr) 
+                pdf.multi_cell(40, 3, txt=alerta_key.upper(), align='C')
                 
-                # 2. Texto Descriptivo (AJUSTADO)
-                pdf.set_font("Arial", "B", 8) # Negrita tamaño 8
+                # 2. IMAGEN (Abajo del texto)
+                # Calculamos Y dinámico o fijo: y_curr + 10 (aprox 3 líneas de texto)
+                pdf.image(ruta, x=x_curr, y=y_curr + 12, w=25)
                 
-                # Bajamos el cursor Y (+27) para que no toque la imagen
-                # Centramos X respecto a la imagen (x_icon - 7) para dar ancho 40
-                pdf.set_xy(x_icon - 7, y_curr + 27)
-                
-                # Width 40 permite textos largos como "NO CONDUCIR..." sin romperse mal
-                pdf.multi_cell(40, 3.5, txt=alerta_key.upper(), align='C')
-                
-                x_icon += 45
+                x_curr += 45
                 count += 1
 
     # D. Zona Braille
@@ -205,7 +205,6 @@ with st.container(border=True):
 
     st.divider()
     
-    # Columnas Interfaz
     c3, c4 = st.columns(2)
     
     with c3:
@@ -213,31 +212,30 @@ with st.container(border=True):
         via_sel = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
         frec_sel = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
         
-        # Previsualización
         cols_prev = st.columns(2)
         if via_sel:
             ruta = ruta_imagen_segura(MAPA_VIA[via_sel])
             if ruta: 
+                cols_prev[0].caption("VÍA")
                 cols_prev[0].image(ruta, width=70)
         if frec_sel:
             archivo = MAPA_FRECUENCIA.get(frec_sel)
             if archivo:
                 ruta = ruta_imagen_segura(archivo)
                 if ruta: 
+                    cols_prev[1].caption("HORARIO")
                     cols_prev[1].image(ruta, width=70)
 
     with c4:
         st.warning("⚠️ Seguridad del Paciente")
         alertas_sel = st.multiselect("Seleccione Precauciones:", list(MAPA_ALERTAS.keys()))
         
-        # Previsualización en Grid
         if alertas_sel:
             cols_alerta = st.columns(4)
             for i, alerta in enumerate(alertas_sel):
                 ruta = ruta_imagen_segura(MAPA_ALERTAS[alerta])
                 if ruta:
-                    col = cols_alerta[i % 4]
-                    col.image(ruta, width=50)
+                    cols_alerta[i % 4].image(ruta, width=50)
 
     st.write("")
     btn_generar = st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True)
