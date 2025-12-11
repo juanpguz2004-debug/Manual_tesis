@@ -16,78 +16,84 @@ if os.path.exists(ASSETS_DIR):
     archivos_reales = os.listdir(ASSETS_DIR)
     st.sidebar.success(f"✅ Librería USP conectada: {len(archivos_reales)} archivos.")
 else:
-    st.sidebar.error(f"❌ Error: No existe la carpeta {ASSETS_DIR}")
+    st.sidebar.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}")
 
-# --- 3. FUNCIÓN DE BÚSQUEDA INTELIGENTE ---
-def ruta_imagen_segura(nombre_archivo):
-    # Busca exacto (ej: '1.gif')
-    ruta_exacta = os.path.join(ASSETS_DIR, nombre_archivo)
+# --- 3. FUNCIÓN DE BÚSQUEDA INTELIGENTE (TOLERANTE A FALLOS) ---
+def ruta_imagen_segura(nombre_objetivo):
+    # 1. Búsqueda exacta
+    ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
     if os.path.exists(ruta_exacta):
         return ruta_exacta
     
-    # Busca con ceros a la izquierda (ej: si pides '1.gif' pero existe '01.gif')
-    if len(nombre_archivo.split('.')[0]) == 1:
-        nombre_cero = "0" + nombre_archivo
-        ruta_cero = os.path.join(ASSETS_DIR, nombre_cero)
-        if os.path.exists(ruta_cero):
-            return ruta_cero
-
+    # 2. Búsqueda insensible a mayúsculas/minúsculas (ej. .GIF vs .gif)
+    # También maneja si el archivo tiene un 0 extra o le falta
+    for archivo_real in os.listdir(ASSETS_DIR):
+        # Comparamos nombres base sin importar mayúsculas
+        if archivo_real.lower() == nombre_objetivo.lower():
+            return os.path.join(ASSETS_DIR, archivo_real)
+            
     return None
 
-# --- 4. BASES DE DATOS DE PICTOGRAMAS (MAPEO COMPLETO) ---
+# --- 4. MAPEO EXACTO (SEGÚN TU LISTA OFICIAL) ---
+# NOTA: Usamos la extensión .GIF en mayúscula para coincidir con tus archivos
 
 # A. Vía de Administración (Icono Principal)
 MAPA_VIA = {
-    "Vía Oral (Tragar)": "1.gif",
-    "Masticar": "43.gif",
-    "Sublingual (Bajo la lengua)": "46.gif",
-    "Disolver en agua": "45.gif",
-    "Inhalador": "71.gif",
-    "Spray Nasal": "77.gif",
-    "Gotas Nariz": "9.gif",
-    "Gotas Ojos": "29.gif",
-    "Gotas Oído": "31.gif",
-    "Inyección": "61.gif",
-    "Vía Rectal": "27.gif",
-    "Vía Vaginal": "25.gif",
-    "Gárgaras": "58.gif"
+    "Vía Oral (Tragar)": "01.GIF",
+    "Masticar": "43.GIF",
+    "Sublingual (Bajo la lengua)": "46.GIF",
+    "Disolver en agua": "45.GIF",
+    "Diluir en agua": "44.GIF",
+    "Inhalador": "71.GIF",
+    "Spray Nasal": "77.GIF",
+    "Gotas Nariz": "09.GIF",
+    "Gotas Ojos": "29.GIF",
+    "Gotas Oído": "31.GIF",
+    "Inyección": "61.GIF",
+    "Vía Rectal": "27.GIF",
+    "Vía Vaginal": "25.GIF", # O 66 según lista
+    "Gárgaras": "58.GIF"
 }
 
 # B. Frecuencia y Horarios
 MAPA_FRECUENCIA = {
     "--- Seleccionar ---": None,
-    "Mañana (AM)": "67.gif",
-    "Noche / Hora de dormir": "22.gif",
-    "2 veces al día": "4.gif",
-    "2 veces al día (Con comidas)": "3.gif",
-    "3 veces al día": "16.gif",
-    "3 veces al día (Con comidas)": "14.gif",
-    "4 veces al día": "15.gif",
-    "1 hora ANTES de comidas": "5.gif",
-    "1 hora DESPUÉS de comidas": "6.gif",
-    "2 horas ANTES de comidas": "7.gif",
-    "Con alimentos": "18.gif",
-    "Estómago vacío (Sin alimentos)": "19.gif"
+    "Mañana (AM)": "67.GIF",
+    "Noche / Hora de dormir": "22.GIF",
+    "2 veces al día": "04.GIF",
+    "2 veces al día (Con comidas)": "03.GIF",
+    "3 veces al día": "16.GIF",
+    "3 veces al día (Con comidas)": "14.GIF",
+    "4 veces al día": "15.GIF",
+    "4 veces al día (Con comidas)": "13.GIF", # + dormir
+    "1 hora ANTES de comidas": "05.GIF",
+    "1 hora DESPUÉS de comidas": "06.GIF",
+    "2 horas ANTES de comidas": "07.GIF",
+    "2 horas DESPUÉS de comidas": "08.GIF",
+    "Con alimentos": "18.GIF",
+    "Estómago vacío (Sin alimentos)": "19.GIF" # No tomar con alimentos
 }
 
 # C. Precauciones y Alertas (Selección Múltiple)
 MAPA_ALERTAS = {
-    "No alcohol": "40.gif",
-    "No conducir (Somnolencia)": "50.gif",
-    "No conducir (Mareo)": "72.gif",
-    "No triturar/romper": "33.gif",
-    "No masticar": "48.gif",
-    "Agitar vigorosamente": "39.gif",
-    "Refrigerar": "20.gif",
-    "No refrigerar": "52.gif",
-    "No congelar": "51.gif",
-    "Proteger de luz solar": "69.gif",
-    "No embarazo": "34.gif",
-    "No lactancia": "36.gif",
-    "No compartir": "54.gif",
-    "No fumar": "55.gif",
-    "Tomar agua adicional": "57.gif",
-    "Peligro/Venenoso": "81.gif"
+    "No alcohol": "40.GIF",
+    "No conducir (Somnolencia)": "50.GIF",
+    "No conducir (Mareo)": "72.GIF",
+    "No triturar/romper": "33.GIF",
+    "No masticar": "48.GIF",
+    "Agitar vigorosamente": "39.GIF",
+    "Refrigerar": "20.GIF",
+    "No refrigerar": "52.GIF",
+    "No congelar": "51.GIF",
+    "Proteger de luz solar": "69.GIF", # O 12
+    "No embarazo": "34.GIF",
+    "No lactancia": "36.GIF",
+    "No compartir": "54.GIF",
+    "No fumar": "55.GIF",
+    "Tomar agua adicional": "57.GIF",
+    "Peligro/Venenoso": "81.GIF",
+    "Causa somnolencia": "24.GIF",
+    "No leche/lácteos": "23.GIF"
 }
 
 # --- 5. MOTOR DE GENERACIÓN PDF ---
@@ -171,7 +177,7 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
         pdf.set_font("Courier", "B", 30)
         pdf.cell(0, 15, txt=". :  . :  .. :  .", ln=True, align='C')
 
-    # Retorno en bytes (Corrección crítica)
+    # Retorno en bytes para evitar error de Streamlit
     return bytes(pdf.output(dest='S'))
 
 # --- 6. INTERFAZ STREAMLIT ---
