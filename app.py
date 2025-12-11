@@ -95,4 +95,76 @@ def generar_pdf(paciente, medicamento, dosis, frecuencia, alerta, es_ciego):
         pdf.cell(0, 5, txt="----------------- CORTE AQUÍ PARA ZONA TÁCTIL -----------------", ln=True, align='C')
         pdf.ln(5)
         
-        pdf.set_font("Arial", "B",
+        pdf.set_font("Arial", "B", 12)
+        pdf.cell(0, 10, txt="INSTRUCCIÓN PARA EL FARMACÉUTICO:", ln=True, align='C')
+        pdf.set_font("Arial", "", 10)
+        pdf.multi_cell(0, 5, txt="1. Voltee esta hoja.\n2. Coloque sobre una superficie blanda (goma/foami).\n3. Presione con un bolígrafo sobre los puntos negros guía.", align='C')
+        
+        # Simulación visual de los puntos guía
+        pdf.ln(10)
+        pdf.set_font("Courier", "B", 30) # Courier es monoespaciada, sirve para simular
+        pdf.cell(0, 15, txt=". : . : .. : .", ln=True, align='C')
+        pdf.cell(0, 15, txt=".. . : . : . .", ln=True, align='C')
+
+    # D. Metadatos de Trazabilidad
+    pdf.set_y(-20)
+    pdf.set_font("Arial", "I", 8)
+    pdf.cell(0, 10, txt=f"Paciente: {paciente} | Generado por Sistema SMEFI | Basado en USP Pictograms", align='C')
+
+    return pdf.output(dest='S').encode('latin-1')
+
+# --- 5. INTERFAZ DE USUARIO (FRONTEND) ---
+with st.container():
+    col1, col2 = st.columns(2)
+    with col1:
+        nombre = st.text_input("Nombre del Paciente", "Juan Pérez")
+        med = st.text_input("Medicamento", "IBUPROFENO")
+    with col2:
+        dosis = st.text_input("Dosis", "800 mg")
+        check_ciego = st.checkbox("Activar Guía de Punzado (Braille)")
+
+    st.divider()
+    
+    st.subheader("Configuración de Pictogramas")
+    c1, c2 = st.columns(2)
+    
+    with c1:
+        frec_sel = st.selectbox("Frecuencia (Posología)", list(MAPA_FRECUENCIA.keys()))
+        # Previsualización
+        img_file = MAPA_FRECUENCIA.get(frec_sel)
+        if img_file:
+            ruta = os.path.join(ASSETS_DIR, img_file)
+            if os.path.exists(ruta):
+                st.image(ruta, width=120, caption=f"Icono USP #{img_file}")
+            else:
+                st.warning("⚠️ Imagen no encontrada en assets")
+
+    with c2:
+        alerta_sel = st.selectbox("Alertas y Precauciones", list(MAPA_ALERTA.keys()))
+        # Previsualización
+        img_file_a = MAPA_ALERTA.get(alerta_sel)
+        if img_file_a:
+            ruta = os.path.join(ASSETS_DIR, img_file_a)
+            if os.path.exists(ruta):
+                st.image(ruta, width=120, caption=f"Icono USP #{img_file_a}")
+
+    st.divider()
+
+    # Botón Principal
+    if st.button("GENERAR GUÍA DE DISPENSACIÓN", type="primary"):
+        if frec_sel == "--- Seleccionar ---":
+            st.error("⚠️ Debes seleccionar una frecuencia para el paciente.")
+        else:
+            try:
+                pdf_bytes = generar_pdf(nombre, med, dosis, frec_sel, alerta_sel, check_ciego)
+                st.success("✅ Guía generada correctamente. Lista para imprimir.")
+                
+                # Botón de Descarga
+                st.download_button(
+                    label="📄 Descargar PDF",
+                    data=pdf_bytes,
+                    file_name=f"Guia_{med}_{nombre}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"Hubo un error generando el PDF: {e}")
