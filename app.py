@@ -9,7 +9,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 # --- 2. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Prototipo Funcional:** Guías con texto SUPERIOR para máxima legibilidad.")
+st.markdown("**Prototipo Funcional:** Guías personalizadas con datos del paciente.")
 
 # Verificación de carpeta
 if os.path.exists(ASSETS_DIR):
@@ -85,22 +85,29 @@ MAPA_ALERTAS = {
     "No leche ni lácteos": "23.GIF"
 }
 
-# --- 5. MOTOR DE GENERACIÓN PDF (TEXTO ARRIBA) ---
+# --- 5. MOTOR DE GENERACIÓN PDF (CORREGIDO CON PACIENTE) ---
 def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_alertas, es_ciego):
     pdf = FPDF()
     pdf.add_page()
     
-    # Encabezado
+    # === A. ENCABEZADO (Ajustado para incluir Paciente) ===
     pdf.set_font("Arial", "B", 24)
-    pdf.cell(0, 15, txt=f"{medicamento.upper()}", ln=True, align='C')
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, txt=f"Dosis: {dosis.upper()}", ln=True, align='C')
-    pdf.line(10, 35, 200, 35)
+    # 1. Medicamento
+    pdf.cell(0, 12, txt=f"{medicamento.upper()}", ln=True, align='C')
     
-    # ============================
-    # SECCIÓN 1: VÍA Y FRECUENCIA
-    # ============================
-    y_bloque_1 = 45 
+    # 2. Nombre del Paciente (NUEVO)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()}", ln=True, align='C')
+    
+    # 3. Dosis
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, txt=f"DOSIS: {dosis.upper()}", ln=True, align='C')
+    
+    # Línea separadora (Bajada a Y=40 para dar espacio)
+    pdf.line(10, 42, 200, 42)
+    
+    # === B. SECCIÓN PRINCIPAL (VÍA + FRECUENCIA) ===
+    y_bloque_1 = 50  # Empezamos en 50
     
     # --- VÍA (Izquierda) ---
     pdf.set_xy(20, y_bloque_1)
@@ -111,13 +118,11 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_via:
         ruta = ruta_imagen_segura(archivo_via)
         if ruta:
-            # 1. TEXTO (Arriba)
+            # Texto
             pdf.set_xy(20, y_bloque_1 + 12)
             pdf.set_font("Arial", "B", 10)
             pdf.multi_cell(60, 4, txt=via_key.upper(), align='C')
-            
-            # 2. IMAGEN (Abajo del texto)
-            # Y=65 fijo para asegurar que no choque con la 2da línea de texto
+            # Imagen
             pdf.image(ruta, x=35, y=y_bloque_1 + 25, w=30)
     
     # --- FRECUENCIA (Derecha) ---
@@ -129,19 +134,15 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     if archivo_frec:
         ruta = ruta_imagen_segura(archivo_frec)
         if ruta:
-            # 1. TEXTO (Arriba)
+            # Texto
             pdf.set_xy(100, y_bloque_1 + 12)
             pdf.set_font("Arial", "B", 10)
             pdf.multi_cell(60, 4, txt=frecuencia_key.upper(), align='C')
-            
-            # 2. IMAGEN (Abajo)
+            # Imagen
             pdf.image(ruta, x=115, y=y_bloque_1 + 25, w=30)
 
-    # ============================
-    # SECCIÓN 2: ALERTAS (Grid)
-    # ============================
-    # Empezamos bastante más abajo (Y=110) para dar espacio a los iconos de arriba
-    y_alertas = 110 
+    # === C. ALERTAS (Grid) ===
+    y_alertas = 115 # Bajamos el inicio de alertas para evitar choques
     
     pdf.set_xy(10, y_alertas)
     pdf.set_font("Arial", "B", 12)
@@ -156,25 +157,23 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
         if nombre_archivo:
             ruta = ruta_imagen_segura(nombre_archivo)
             if ruta:
-                # Salto de línea si hay más de 4 iconos
                 if count == 4: 
                     x_curr = 20
-                    y_curr += 55 # Espacio vertical entre filas
+                    y_curr += 55
                     count = 0
                 
-                # 1. TEXTO (Arriba, centrado en su columna)
+                # Texto
                 pdf.set_font("Arial", "B", 8)
                 pdf.set_xy(x_curr - 5, y_curr) 
                 pdf.multi_cell(40, 3, txt=alerta_key.upper(), align='C')
                 
-                # 2. IMAGEN (Abajo del texto)
-                # Calculamos Y dinámico o fijo: y_curr + 10 (aprox 3 líneas de texto)
+                # Imagen
                 pdf.image(ruta, x=x_curr, y=y_curr + 12, w=25)
                 
                 x_curr += 45
                 count += 1
 
-    # D. Zona Braille
+    # === D. PIE DE PÁGINA (BRAILLE) ===
     if es_ciego:
         pdf.set_y(240)
         pdf.set_font("Arial", "", 10)
@@ -197,6 +196,7 @@ with col_titulo:
 with st.container(border=True):
     c1, c2 = st.columns(2)
     with c1:
+        # AQUI SE CAPTURA EL NOMBRE
         nombre = st.text_input("Paciente", "Maria Gonzales")
         med = st.text_input("Medicamento", "AMOXICILINA")
     with c2:
@@ -242,6 +242,7 @@ with st.container(border=True):
 
 if btn_generar:
     try:
+        # Pasamos 'nombre' a la función
         pdf_bytes = generar_pdf(nombre, med, dosis, via_sel, frec_sel, alertas_sel, es_ciego)
         st.success("✅ ¡Guía generada correctamente!")
         st.download_button(
