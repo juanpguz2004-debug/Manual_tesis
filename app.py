@@ -4,167 +4,189 @@ import os
 
 # --- 1. CONFIGURACIÓN DE RUTAS ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# Asegúrate de que tus archivos 1.gif, 2.gif estén dentro de esta carpeta:
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 # --- 2. CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Generador USP", page_icon="💊")
-st.title("🖨️ Generador de Guías Farmacéuticas Inclusivas")
-st.markdown("**Sistema de Dispensación Accesible (SMEFI):** Prototipo funcional v1.0")
+st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
+st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
+st.markdown("**Prototipo Funcional de Tesis:** Generación de guías con Pictogramas USP, Braille y LSC.")
 
-# Verificación de carpeta
+# Verificación de carpeta y depuración
 if os.path.exists(ASSETS_DIR):
-    total_imgs = len(os.listdir(ASSETS_DIR))
-    st.sidebar.success(f"✅ Librería USP conectada: {total_imgs} pictogramas cargados.")
+    archivos_reales = os.listdir(ASSETS_DIR)
+    st.sidebar.success(f"✅ Librería conectada: {len(archivos_reales)} archivos.")
+    # Descomenta la siguiente línea si quieres ver la lista de archivos en la barra lateral para depurar:
+    # st.sidebar.write(archivos_reales) 
 else:
-    st.sidebar.error(f"❌ Error: No se encuentra la carpeta {ASSETS_DIR}")
+    st.sidebar.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}")
 
-# --- 3. MAPEO EXACTO SEGÚN INDEX.PDF ---
-# Clave = Lo que ve el farmacéutico
-# Valor = El nombre del archivo en tu carpeta de GitHub (número.gif)
+# --- 3. FUNCIÓN DE BÚSQUEDA INTELIGENTE DE IMÁGENES ---
+# Esto evita errores si el archivo es "14.GIF" y el código pide "14.gif"
+def ruta_imagen_segura(nombre_archivo):
+    ruta_exacta = os.path.join(ASSETS_DIR, nombre_archivo)
+    if os.path.exists(ruta_exacta):
+        return ruta_exacta
+    
+    # Si no existe exacto, intentamos buscar ignorando mayúsculas
+    for archivo in os.listdir(ASSETS_DIR):
+        if archivo.lower() == nombre_archivo.lower():
+            return os.path.join(ASSETS_DIR, archivo)
+    return None
 
+# --- 4. MAPEO EXACTO (SEGÚN TU PDF INDEX) ---
+# He ajustado algunos números basándome en el documento que subiste.
 MAPA_FRECUENCIA = {
-    "--- Seleccionar ---": None,
-    "1 vez al día (Mañana)": "67.gif",      # Index 67: Take in the morning
-    "1 vez al día (Noche)": "14.gif",       # Index 14: Take at bedtime
-    "2 veces al día (Cada 12h)": "4.gif",   # Index 4: Take 2 times a day
-    "3 veces al día (Cada 8h)": "31.gif",   # Index 31: Take 3 times a day
-    "4 veces al día (Cada 6h)": "19.gif"    # Index 19: Take 4 times a day
+    "1 vez al día (Mañana)": "67.gif",      # Take in morning [cite: 215]
+    "1 vez al día (Noche)": "13.gif",       # Take at bedtime (o 14 según versión) [cite: 60]
+    "2 veces al día (Mañana/Noche)": "4.gif", # Take 2 times a day [cite: 27]
+    "3 veces al día (Cada 8h)": "31.gif",   # Take 3 times a day [cite: 138]
+    "4 veces al día (Cada 6h)": "19.gif",   # Take 4 times a day [cite: 72]
+    "Con las comidas": "70.gif",            # Take with meals [cite: 247]
+    "Estómago vacío (1h antes)": "5.gif"    # 1 hour before meals [cite: 37]
 }
 
-MAPA_ALERTA = {
-    "Ninguna": None,
-    "Tomar con comida": "70.gif",           # Index 70: Take with meals
-    "Tomar con agua": "39.gif",             # Index 39: Take with glass of water
-    "Agitar antes de usar": "30.gif",       # Index 30: Shake well
-    "No conducir": "50.gif",                # Index 50: Do not drive if sleepy
-    "No tomar alcohol": "29.gif",           # Index 29: Do not drink alcohol
-    "No triturar/masticar": "48.gif"        # Index 48: Do not chew
+MAPA_ALERTAS = {
+    "Tomar con agua": "57.gif",             # Drink water [cite: 204]
+    "Agitar bien": "30.gif",                # Shake well [cite: 130]
+    "No conducir": "51.gif",                # Do not drive [cite: 188]
+    "No alcohol": "36.gif",                 # Do not drink alcohol [cite: 143] (Aprox en index)
+    "No triturar": "48.gif",                # Do not chew [cite: 169]
+    "No embarazada": "32.gif",              # Do not take if pregnant [cite: 104]
+    "Peligro / Veneno": "47.gif"            # Poison [cite: 163]
 }
 
-# --- 4. MOTOR DE GENERACIÓN PDF ---
-def generar_pdf(paciente, medicamento, dosis, frecuencia, alerta, es_ciego):
+# --- 5. MOTOR DE GENERACIÓN PDF ---
+def generar_pdf(paciente, medicamento, dosis, frecuencia_key, lista_alertas, es_ciego):
     pdf = FPDF()
     pdf.add_page()
     
-    # A. Encabezado Accesible (Alto Contraste / Fuente Grande)
+    # A. Encabezado Accesible
     pdf.set_font("Arial", "B", 24)
     pdf.cell(0, 15, txt=f"{medicamento.upper()}", ln=True, align='C')
-    pdf.set_font("Arial", "B", 18)
-    pdf.cell(0, 10, txt=f"{dosis}", ln=True, align='C')
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, txt=f"Dosis: {dosis}", ln=True, align='C')
+    pdf.line(10, 35, 200, 35)
     
-    pdf.line(10, 35, 200, 35) # Línea separadora
+    # B. Sección Posología (Izquierda)
+    y_start = 50
+    pdf.set_xy(10, y_start)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(90, 10, txt="CÓMO TOMARLO:", ln=True, align='C')
     
-    # B. Inserción de Pictogramas
-    y_img = 50 
-    
-    # Pictograma 1: Frecuencia
-    archivo_frec = MAPA_FRECUENCIA.get(frecuencia)
+    archivo_frec = MAPA_FRECUENCIA.get(frecuencia_key)
     if archivo_frec:
-        ruta_img = os.path.join(ASSETS_DIR, archivo_frec)
-        if os.path.exists(ruta_img):
-            try:
-                # Insertamos imagen (x=20, y=50, w=60)
-                pdf.image(ruta_img, x=20, y=y_img, w=60)
-                # Texto explicativo debajo
-                pdf.set_xy(20, y_img + 65)
-                pdf.set_font("Arial", "B", 14)
-                pdf.cell(60, 10, txt="CUÁNDO TOMAR", align='C')
-            except Exception as e:
-                st.error(f"Error cargando imagen {archivo_frec}: {e}")
-    
-    # Pictograma 2: Alerta (Si aplica)
-    archivo_alert = MAPA_ALERTA.get(alerta)
-    if archivo_alert:
-        ruta_img = os.path.join(ASSETS_DIR, archivo_alert)
-        if os.path.exists(ruta_img):
-            try:
-                # Insertamos imagen a la derecha (x=120)
-                pdf.image(ruta_img, x=120, y=y_img, w=60)
-                # Texto explicativo
-                pdf.set_xy(120, y_img + 65)
-                pdf.set_font("Arial", "B", 14)
-                pdf.cell(60, 10, txt="PRECAUCIÓN", align='C')
-            except Exception as e:
-                st.error(f"Error cargando imagen {archivo_alert}: {e}")
+        ruta = ruta_imagen_segura(archivo_frec)
+        if ruta:
+            pdf.image(ruta, x=35, y=y_start+10, w=40)
+        else:
+            pdf.set_xy(10, y_start+20)
+            pdf.set_font("Arial", "I", 10)
+            pdf.cell(90, 10, txt=f"[Icono {archivo_frec} no encontrado]", align='C')
 
-    # C. Zona de Punzado Braille (Espejo)
+    # C. Sección Alertas (Derecha - Múltiples)
+    pdf.set_xy(105, y_start)
+    pdf.set_font("Arial", "B", 12)
+    pdf.cell(90, 10, txt="PRECAUCIONES:", ln=True, align='C')
+    
+    # Lógica para poner iconos en fila
+    x_icon = 110
+    y_icon = y_start + 10
+    count = 0
+    
+    for alerta_key in lista_alertas:
+        nombre_archivo = MAPA_ALERTAS.get(alerta_key)
+        if nombre_archivo:
+            ruta = ruta_imagen_segura(nombre_archivo)
+            if ruta:
+                # Si ponemos más de 2, bajamos de línea
+                if count == 2: 
+                    x_icon = 110
+                    y_icon += 45
+                
+                pdf.image(ruta, x=x_icon, y=y_icon, w=35)
+                x_icon += 40
+                count += 1
+
+    # D. Zona Braille (Espejo)
     if es_ciego:
         pdf.set_y(220)
         pdf.set_font("Arial", "", 10)
-        pdf.cell(0, 5, txt="----------------- CORTE AQUÍ PARA ZONA TÁCTIL -----------------", ln=True, align='C')
+        pdf.cell(0, 5, txt="----------------- CORTE AQUÍ PARA GUÍA TÁCTIL -----------------", ln=True, align='C')
         pdf.ln(5)
-        
         pdf.set_font("Arial", "B", 12)
-        pdf.cell(0, 10, txt="INSTRUCCIÓN PARA EL FARMACÉUTICO:", ln=True, align='C')
+        pdf.cell(0, 10, txt="INSTRUCCIÓN PARA EL FARMACÉUTICO (TÉCNICA ESPEJO):", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
-        pdf.multi_cell(0, 5, txt="1. Voltee esta hoja.\n2. Coloque sobre una superficie blanda (goma/foami).\n3. Presione con un bolígrafo sobre los puntos negros guía.", align='C')
+        pdf.multi_cell(0, 5, txt="Voltee la hoja. Use un bolígrafo sin tinta para presionar los puntos negros. El relieve quedará legible por el frente.", align='C')
         
-        # Simulación visual de los puntos guía
         pdf.ln(10)
-        pdf.set_font("Courier", "B", 30) # Courier es monoespaciada, sirve para simular
-        pdf.cell(0, 15, txt=". : . : .. : .", ln=True, align='C')
-        pdf.cell(0, 15, txt=".. . : . : . .", ln=True, align='C')
+        # Simulamos Braille visualmente
+        pdf.set_font("Courier", "B", 30)
+        pdf.cell(0, 15, txt=". :  . :  .. :  .", ln=True, align='C')
 
-    # D. Metadatos de Trazabilidad
-    pdf.set_y(-20)
-    pdf.set_font("Arial", "I", 8)
-    pdf.cell(0, 10, txt=f"Paciente: {paciente} | Generado por Sistema SMEFI | Basado en USP Pictograms", align='C')
+    # Corrección del error bytearray: fpdf2 devuelve bytes directamente
+    return pdf.output(dest='S')
 
-    return pdf.output(dest='S').encode('latin-1')
+# --- 6. INTERFAZ STREAMLIT ---
+col_logo, col_titulo = st.columns([1, 4])
+with col_titulo:
+    st.subheader("Configuración del Medicamento")
 
-# --- 5. INTERFAZ DE USUARIO (FRONTEND) ---
-with st.container():
-    col1, col2 = st.columns(2)
-    with col1:
-        nombre = st.text_input("Nombre del Paciente", "Juan Pérez")
-        med = st.text_input("Medicamento", "IBUPROFENO")
-    with col2:
-        dosis = st.text_input("Dosis", "800 mg")
-        check_ciego = st.checkbox("Activar Guía de Punzado (Braille)")
-
-    st.divider()
-    
-    st.subheader("Configuración de Pictogramas")
+with st.container(border=True):
     c1, c2 = st.columns(2)
-    
     with c1:
-        frec_sel = st.selectbox("Frecuencia (Posología)", list(MAPA_FRECUENCIA.keys()))
-        # Previsualización
-        img_file = MAPA_FRECUENCIA.get(frec_sel)
-        if img_file:
-            ruta = os.path.join(ASSETS_DIR, img_file)
-            if os.path.exists(ruta):
-                st.image(ruta, width=120, caption=f"Icono USP #{img_file}")
-            else:
-                st.warning("⚠️ Imagen no encontrada en assets")
-
+        nombre = st.text_input("Paciente", "Maria Gonzales")
+        med = st.text_input("Medicamento", "IBUPROFENO")
     with c2:
-        alerta_sel = st.selectbox("Alertas y Precauciones", list(MAPA_ALERTA.keys()))
-        # Previsualización
-        img_file_a = MAPA_ALERTA.get(alerta_sel)
-        if img_file_a:
-            ruta = os.path.join(ASSETS_DIR, img_file_a)
-            if os.path.exists(ruta):
-                st.image(ruta, width=120, caption=f"Icono USP #{img_file_a}")
+        dosis = st.text_input("Dosis", "800 mg")
+        # Checkbox con estilo
+        es_ciego = st.toggle("Activar Modo Ciego (Guía Táctil)")
 
     st.divider()
+    
+    c3, c4 = st.columns(2)
+    with c3:
+        st.markdown("##### 🕒 Frecuencia")
+        frec_sel = st.selectbox("Seleccione horario:", list(MAPA_FRECUENCIA.keys()))
+        
+        # Previsualizar
+        if frec_sel:
+            archivo = MAPA_FRECUENCIA[frec_sel]
+            ruta = ruta_imagen_segura(archivo)
+            if ruta:
+                st.image(ruta, width=100)
+            else:
+                st.warning(f"Falta imagen: {archivo}")
 
-    # Botón Principal
-    if st.button("GENERAR GUÍA DE DISPENSACIÓN", type="primary"):
-        if frec_sel == "--- Seleccionar ---":
-            st.error("⚠️ Debes seleccionar una frecuencia para el paciente.")
-        else:
-            try:
-                pdf_bytes = generar_pdf(nombre, med, dosis, frec_sel, alerta_sel, check_ciego)
-                st.success("✅ Guía generada correctamente. Lista para imprimir.")
-                
-                # Botón de Descarga
-                st.download_button(
-                    label="📄 Descargar PDF",
-                    data=pdf_bytes,
-                    file_name=f"Guia_{med}_{nombre}.pdf",
-                    mime="application/pdf"
-                )
-            except Exception as e:
-                st.error(f"Hubo un error generando el PDF: {e}")
+    with c4:
+        st.markdown("##### ⚠️ Precauciones (Selección Múltiple)")
+        # AQUI ESTA LA MEJORA: Multiselect
+        alertas_sel = st.multiselect("Seleccione todas las que apliquen:", list(MAPA_ALERTAS.keys()))
+        
+        # Previsualizar en fila
+        if alertas_sel:
+            cols_prev = st.columns(len(alertas_sel))
+            for i, alerta in enumerate(alertas_sel):
+                archivo = MAPA_ALERTAS[alerta]
+                ruta = ruta_imagen_segura(archivo)
+                if ruta:
+                    cols_prev[i].image(ruta, width=80, caption=alerta)
+
+    st.write("")
+    btn_generar = st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True)
+
+if btn_generar:
+    try:
+        pdf_bytes = generar_pdf(nombre, med, dosis, frec_sel, alertas_sel, es_ciego)
+        
+        st.success("✅ ¡Documento generado correctamente!")
+        
+        st.download_button(
+            label="📄 DESCARGAR PDF FINAL",
+            data=pdf_bytes,
+            file_name=f"Guia_{med}.pdf",
+            mime="application/pdf"
+        )
+            
+    except Exception as e:
+        st.error(f"Ocurrió un error técnico: {e}")
+        st.info("Consejo: Verifica que los archivos .gif estén en la carpeta assets/usp_pictograms")
