@@ -3,6 +3,7 @@ from fpdf import FPDF
 import os
 import unicodedata
 import time
+import pybraille  # Asegúrate de tener esto en requirements.txt
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,125 +11,131 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 7.0 (Professional):** Core Braille Estándar + Control de Paginación.")
+st.markdown("**Versión 7.5 (Library Edition):** Integración PyBraille + Renderizado Vectorial.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
 
-# --- 2. CORE BRAILLE (LIBRERÍA NATIVA) ---
-class BrailleEngine:
+# --- 2. MOTOR BRAILLE (LIBRARY WRAPPER) ---
+class BrailleRenderer:
     """
-    Motor de traducción Braille Grado 1 (Español).
-    Implementación profesional basada en mapeo directo de caracteres.
+    Motor híbrido: Usa pybraille para la traducción lógica,
+    pero dibuja vectorialmente usando Bitmasks para no depender de fuentes .ttf
     """
-    # Mapa estándar Braille (Puntos 1-6)
-    MAPA_CHARS = {
-        'a': [1], 'b': [1,2], 'c': [1,4], 'd': [1,4,5], 'e': [1,5],
-        'f': [1,2,4], 'g': [1,2,4,5], 'h': [1,2,5], 'i': [2,4], 'j': [2,4,5],
-        'k': [1,3], 'l': [1,2,3], 'm': [1,3,4], 'n': [1,3,4,5], 'o': [1,3,5],
-        'p': [1,2,3,4], 'q': [1,2,3,4,5], 'r': [1,2,3,5], 's': [2,3,4], 't': [2,3,4,5],
-        'u': [1,3,6], 'v': [1,2,3,6], 'w': [2,4,5,6], 'x': [1,3,4,6], 'y': [1,3,4,5,6], 'z': [1,3,5,6],
-        'á': [1,2,3,5,6], 'é': [2,3,4,6], 'í': [3,4], 'ó': [3,4,6], 'ú': [2,3,4,5,6], 'ü': [1,2,5,6],
-        'ñ': [1,2,4,5,6],
-        '1': [1], '2': [1,2], '3': [1,4], '4': [1,4,5], '5': [1,5],
-        '6': [1,2,4], '7': [1,2,4,5], '8': [1,2,5], '9': [2,4], '0': [2,4,5],
-        ',': [2], ';': [2,3], ':': [2,5], '.': [2,5,6], '!': [2,3,5], 
-        '(': [2,3,5,6], ')': [2,3,5,6], '?': [2,6], '-': [3,6], '/': [3,4], 
-        ' ': [] # Espacio
-    }
-    SIGNO_NUMERO = [3, 4, 5, 6]
-    SIGNO_MAYUS = [4, 6]
+    
+    @staticmethod
+    def texto_a_unicode(texto):
+        """
+        Usa la librería pybraille para convertir texto normal a String Braille Unicode.
+        Ejemplo: "Hola" -> "⠓⠕⠇⠁"
+        """
+        # Pre-procesamiento para asegurar que pybraille reciba caracteres limpios
+        texto_limpio = unicodedata.normalize('NFC', str(texto)).lower()
+        
+        # Corrección manual de la 'ñ' si la librería no la soporta nativamente (común en libs inglesas)
+        # La ñ en español suele ser puntos 1-2-4-5-6 (⠻)
+        texto_tratado = ""
+        for char in texto_limpio:
+            if char == 'ñ':
+                texto_tratado += "⠻" 
+            elif char == 'á': texto_tratado += "⠷"
+            elif char == 'é': texto_tratado += "⠮"
+            elif char == 'í': texto_tratado += "⠌"
+            elif char == 'ó': texto_tratado += "⠬"
+            elif char == 'ú': texto_tratado += "⠾"
+            elif char == 'ü': texto_tratado += "⠳"
+            else:
+                try:
+                    # Intentamos convertir con la librería
+                    texto_tratado += pybraille.convert(char)
+                except:
+                    # Si falla (caracter raro), ponemos un espacio
+                    texto_tratado += " "
+        
+        return texto_tratado
 
     @staticmethod
-    def traducir(texto):
-        """ Convierte string a lista de listas de puntos """
-        secuencia_puntos = []
-        # Normalizar Unicode (evitar tildes separadas)
-        texto = unicodedata.normalize('NFC', str(texto))
+    def dibujar_en_pdf(pdf, braille_unicode, x_start, y_start, espejo=False):
+        """
+        Dibuja los puntos basándose en el código Unicode del caracter.
+        Unicode Braille va de 0x2800 (vacío) a 0x28FF.
+        Los bits indican los puntos:
+        Bit 0 = Punto 1 | Bit 3 = Punto 4
+        Bit 1 = Punto 2 | Bit 4 = Punto 5
+        Bit 2 = Punto 3 | Bit 5 = Punto 6
+        """
+        # Configuración Física
+        scale = 1.2
+        r = 0.55 * scale 
+        spacing_dot = 2.5 * scale
+        spacing_char = 6.5 * scale
+        spacing_line = 11.0 * scale
+        margin_right = 190
         
-        modo_numero = False
+        cur_x, cur_y = x_start, y_start
         
-        for char in texto:
-            es_mayus = char.isupper()
-            char_lower = char.lower()
-            
-            # Manejo de Números
-            if char_lower.isdigit():
-                if not modo_numero:
-                    secuencia_puntos.append(BrailleEngine.SIGNO_NUMERO)
-                    modo_numero = True
-                secuencia_puntos.append(BrailleEngine.MAPA_CHARS.get(char_lower, []))
-                continue
-            
-            # Reset modo número si encontramos letra o espacio (pero no , o .)
-            if modo_numero and char_lower not in [',', '.', ':']:
-                modo_numero = False
-                
-            # Manejo de Mayúsculas (Opcional, desactivado para simplificar lectura médica, activar si se requiere)
-            # if es_mayus: secuencia_puntos.append(BrailleEngine.SIGNO_MAYUS)
-            
-            # Obtener puntos
-            puntos = BrailleEngine.MAPA_CHARS.get(char_lower, [])
-            secuencia_puntos.append(puntos)
-            
-        return secuencia_puntos
+        for char in braille_unicode:
+            # Detectar salto de línea
+            if cur_x + spacing_char > margin_right:
+                cur_x = x_start
+                cur_y += spacing_line
+                if cur_y > 260: break 
 
-def dibujar_braille(pdf, texto, x_inicio, y_inicio, es_espejo=True):
-    """ Dibuja los puntos físicamente en el PDF """
-    secuencia = BrailleEngine.traducir(texto)
-    
-    # Parámetros Físicos (Calibrados)
-    scale = 1.1
-    radio = 0.55 * scale
-    espacio_punto = 2.5 * scale
-    espacio_caracter = 6.2 * scale
-    espacio_linea = 11.0 * scale
-    margen_derecho = 190
-    
-    cur_x, cur_y = x_inicio, y_inicio
-    
-    # Matriz de Transformación (Espejo vs Normal)
-    # Espejo (Reverso): 1->4, 2->5, 3->6
-    # Normal (Frontal): 1->1, 2->2, 3->3
-    mapa_espejo = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
-    
-    for puntos_char in secuencia:
-        # Salto de línea
-        if cur_x + espacio_caracter > margen_derecho:
-            cur_x = x_inicio
-            cur_y += espacio_linea
-            # Freno de emergencia si se sale de la página
-            if cur_y > 260: break 
+            # Obtener valor del caracter (ej: 0x2801) y restar base 0x2800 para tener los bits
+            codepoint = ord(char)
+            if not (0x2800 <= codepoint <= 0x28FF):
+                # No es braille, saltar
+                continue
+                
+            bits = codepoint - 0x2800
             
-        # Aplicar espejo si es necesario
-        puntos_finales = [mapa_espejo[p] for p in puntos_char] if es_espejo else puntos_char
-        
-        # Dibujar guías (gris muy claro)
-        pdf.set_fill_color(245, 245, 245)
-        coordenadas = {
-            1: (cur_x, cur_y),
-            2: (cur_x, cur_y + espacio_punto),
-            3: (cur_x, cur_y + espacio_punto * 2),
-            4: (cur_x + espacio_punto, cur_y),
-            5: (cur_x + espacio_punto, cur_y + espacio_punto),
-            6: (cur_x + espacio_punto, cur_y + espacio_punto * 2)
-        }
-        
-        # Puntos activos (Negro)
-        pdf.set_fill_color(0, 0, 0)
-        for p in puntos_finales:
-            if p in coordenadas:
-                cx, cy = coordenadas[p]
-                pdf.circle(cx, cy, radio, 'F')
+            # Definir posiciones físicas
+            # Columna izquierda (1,2,3) y derecha (4,5,6)
+            pos_1 = (cur_x, cur_y)
+            pos_2 = (cur_x, cur_y + spacing_dot)
+            pos_3 = (cur_x, cur_y + spacing_dot * 2)
+            pos_4 = (cur_x + spacing_dot, cur_y)
+            pos_5 = (cur_x + spacing_dot, cur_y + spacing_dot)
+            pos_6 = (cur_x + spacing_dot, cur_y + spacing_dot * 2)
             
-        cur_x += espacio_caracter
-        
-    return cur_y # Devolvemos la posición Y final
+            puntos_activos = []
+            
+            # Logica de Espejo (Cruzar columnas)
+            if espejo:
+                # Si es espejo:
+                # Bit 0 (Punto 1) se dibuja en Pos 4
+                if bits & 0x01: puntos_activos.append(pos_4) # 1 -> 4
+                if bits & 0x02: puntos_activos.append(pos_5) # 2 -> 5
+                if bits & 0x04: puntos_activos.append(pos_6) # 3 -> 6
+                if bits & 0x08: puntos_activos.append(pos_1) # 4 -> 1
+                if bits & 0x10: puntos_activos.append(pos_2) # 5 -> 2
+                if bits & 0x20: puntos_activos.append(pos_3) # 6 -> 3
+            else:
+                # Normal
+                if bits & 0x01: puntos_activos.append(pos_1)
+                if bits & 0x02: puntos_activos.append(pos_2)
+                if bits & 0x04: puntos_activos.append(pos_3)
+                if bits & 0x08: puntos_activos.append(pos_4)
+                if bits & 0x10: puntos_activos.append(pos_5)
+                if bits & 0x20: puntos_activos.append(pos_6)
+
+            # Dibujar Guías (Sombra)
+            pdf.set_fill_color(245, 245, 245) # Gris muy claro
+            for p_coord in [pos_1, pos_2, pos_3, pos_4, pos_5, pos_6]:
+                pdf.circle(p_coord[0], p_coord[1], r, 'F')
+
+            # Dibujar Puntos (Negro)
+            pdf.set_fill_color(0, 0, 0)
+            for p_coord in puntos_activos:
+                pdf.circle(p_coord[0], p_coord[1], r, 'F')
+            
+            cur_x += spacing_char
+            
+        return cur_y
 
 # --- 3. GESTIÓN DE RECURSOS ---
 def get_img(name):
     if not name: return None
-    # Búsqueda robusta (insensible a mayúsculas)
     target = name.lower()
     for f in os.listdir(ASSETS_DIR):
         if f.lower() == target: return os.path.join(ASSETS_DIR, f)
@@ -167,9 +174,9 @@ MAPA_ALERTAS = {
 }
 
 # --- 4. GENERACIÓN PDF ---
-def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, braille_espejo):
+def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo):
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15) # Default para la pág 1
+    pdf.set_auto_page_break(auto=True, margin=15) 
     
     # --- PÁGINA 1: VISUAL ---
     pdf.add_page()
@@ -179,7 +186,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, braille
     pdf.cell(0, 8, txt=f"PACIENTE: {str(paciente).upper()} | DOSIS: {str(dosis).upper()}", ln=True, align='C')
     pdf.line(10, 35, 200, 35)
     
-    # Bloque Principal
     y_bloque = 50
     pdf.set_xy(20, y_bloque)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
@@ -222,43 +228,38 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, braille
     # --- PÁGINA 2: BRAILLE ---
     if hacer_braille:
         pdf.add_page()
-        # **CRÍTICO:** Desactivar salto automático para esta página.
-        # Esto previene que al dibujar puntos cerca del final, salte y deje la hoja en blanco.
-        pdf.set_auto_page_break(auto=False)
+        pdf.set_auto_page_break(auto=False) # CONTROL MANUAL DE PÁGINA
         
-        titulo_modo = "ESPEJO (PUNZADO REVERSO)" if braille_espejo else "NORMAL (LECTURA FRONTAL)"
+        modo_txt = "MODO ESPEJO (PUNZAR)" if espejo else "MODO LECTURA (FRONTAL)"
         
         pdf.set_font("Arial", "B", 16)
-        pdf.cell(0, 10, txt=f"GUÍA TÁCTIL - {titulo_modo}", ln=True, align='C')
+        pdf.cell(0, 10, txt=f"GUÍA TÁCTIL - {modo_txt}", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
-        instruccion = "Punzar por el reverso." if braille_espejo else "Lectura visual directa."
-        pdf.multi_cell(0, 5, txt=f"INSTRUCCIONES: {instruccion}", align='C')
+        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Punzar puntos negros por el reverso.", align='C')
         pdf.ln(10)
         
-        # Construcción texto a convertir
-        al_txt = ", ".join(alertas) if alertas else "NINGUNA"
-        # Limpieza de texto para el Braille
-        texto_braille = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec}"
+        # 1. Obtener texto plano
+        texto_plano = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec}"
         
-        # Dibujar Braille y obtener posición final Y
-        y_final = dibujar_braille(pdf, texto_braille, 10, 45, es_espejo=braille_espejo)
+        # 2. Convertir a Unicode Braille usando la librería + Fixes
+        braille_unicode = BrailleRenderer.texto_a_unicode(texto_plano)
         
-        # Pie de página Inteligente
-        # Si sobra espacio en la hoja actual, ponerlo ahí. Si no, nueva hoja.
+        # 3. Dibujar vectorialmente
+        y_final = BrailleRenderer.dibujar_en_pdf(pdf, braille_unicode, 10, 45, espejo=espejo)
+        
+        # Pie de página seguro
         if y_final > 250:
             pdf.add_page()
             pdf.set_auto_page_break(auto=False)
-            y_final = 20 # Reset Y para nueva página
             
-        pdf.set_y(-25) # Forzar posición al final absoluto
+        pdf.set_y(-25)
         pdf.set_font("Courier", "", 8)
-        pdf.set_text_color(100, 100, 100)
-        clean_debug = (texto_braille[:90] + '...') if len(texto_braille) > 90 else texto_braille
-        pdf.cell(0, 5, txt=f"Texto Fuente: {clean_debug}", align='C', ln=1)
-        
+        pdf.set_text_color(120, 120, 120)
+        clean_debug = (texto_plano[:85] + '...') if len(texto_plano) > 85 else texto_plano
+        pdf.cell(0, 5, txt=f"Contenido: {clean_debug}", align='C', ln=1)
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="SMEFI System v7.0", align='C')
+        pdf.cell(0, 5, txt="SMEFI System v7.5 - Powered by PyBraille", align='C')
 
     return bytes(pdf.output(dest='S'))
 
@@ -275,8 +276,7 @@ with st.container(border=True):
     st.markdown("---")
     cc, cd = st.columns(2)
     bra = cc.toggle("Generar Hoja Braille", value=True)
-    # Nuevo control para depurar espejo vs normal
-    espejo = cd.toggle("Modo Espejo (Para Punzar)", value=True, help="Desactívalo para ver el Braille al derecho y verificar traducción.")
+    espejo = cd.toggle("Modo Espejo (Para Punzar)", value=True, help="Actívalo para invertir los puntos horizontalmente (para punzones). Desactívalo para leer en pantalla.")
 
 c3, c4 = st.columns(2)
 with c3:
