@@ -302,7 +302,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="SMEFI System v11.0", align='C')
+        pdf.cell(0, 5, txt="Sistema braille v11.0", align='C')
 
     return bytes(pdf.output(dest='S'))
 
