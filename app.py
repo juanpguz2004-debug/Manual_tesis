@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import io
 import tempfile
 import csv
+import zipfile  # <--- AGREGADO: Para comprimir el lote
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +23,7 @@ st.set_page_config(
 )
 
 # ==========================================
-#   ESTILOS CSS "REACT-LIKE" (ANIMACIONES)
+#    ESTILOS CSS "REACT-LIKE" (ANIMACIONES)
 # ==========================================
 st.markdown("""
 <style>
@@ -128,6 +129,109 @@ st.markdown("""
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
+
+# --- DATOS EXTRA: LOTE DE 100 FICHAS ---
+DATA_LOTE = """MEDICAMENTO,DOSIS,VIA,FRECUENCIA,ALERTAS
+ACETAMINOFEN,500 mg,Vía Oral (Tragar),3 veces al día,No alcohol;Leer etiqueta
+IBUPROFENO,400 mg,Vía Oral (Tragar),3 veces al día (Con comidas),No alcohol;Tomar con agua
+LOSARTAN,50 mg,Vía Oral (Tragar),Mañana (AM),No embarazo;Tomar agua extra
+AMLODIPINO,5 mg,Vía Oral (Tragar),Mañana (AM),No conducir (Mareo);Tomar agua extra
+OMEPRAZOL,20 mg,Vía Oral (Tragar),1h ANTES de comer,No triturar;No masticar
+METFORMINA,850 mg,Vía Oral (Tragar),Con alimentos,No alcohol;Leer etiqueta
+AMOXICILINA,500 mg,Vía Oral (Tragar),3 veces al día,No alcohol;Completar tratamiento
+ATORVASTATINA,20 mg,Vía Oral (Tragar),Noche,No embarazo;No lactancia
+ACIDO ACETILSALICILICO (ASA),100 mg,Vía Oral (Tragar),Mañana (AM),Tomar con agua;No alcohol
+LEVOTIROXINA,5 mcg,Vía Oral (Tragar),1h ANTES de comer,Estómago vacío;No compartir
+ENALAPRIL,20 mg,Vía Oral (Tragar),2 veces al día,No embarazo;No conducir (Mareo)
+SALBUTAMOL (INHALADOR),100 mcg,Inhalador,Emergencia,Agitar vigorosamente;Lavarse las manos
+LORATADINA,10 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No conducir (Sueño)
+DICLOFENACO,50 mg,Vía Oral (Tragar),3 veces al día (Con comidas),No alcohol;Tomar con agua
+CIPROFLOXACINA,500 mg,Vía Oral (Tragar),2 veces al día,No lácteos;Proteger luz solar
+HIOSCINA (BUSCAPINA),10 mg,Vía Oral (Tragar),3 veces al día,No conducir (Visión borrosa);Tomar agua extra
+ALBENDAZOL,400 mg,Vía Oral (Tragar),Dosis única,No embarazo;Lavarse las manos
+TRAMADOL,50 mg,Vía Oral (Tragar),2 veces al día,Causa somnolencia;No conducir (Sueño);No alcohol
+FUROSEMIDA,40 mg,Vía Oral (Tragar),Mañana (AM),Tomar agua extra;Proteger luz solar
+HIDROCLOROTIAZIDA,25 mg,Vía Oral (Tragar),Mañana (AM),Tomar agua extra;Proteger luz solar
+GLIBENCLAMIDA,5 mg,Vía Oral (Tragar),Con alimentos,No alcohol;Leer etiqueta
+NAPROXENO,250 mg,Vía Oral (Tragar),2 veces al día (Con comidas),No alcohol;Tomar con agua
+AZITROMICINA,500 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;No compartir
+CEFALEXINA,500 mg,Vía Oral (Tragar),4 veces al día,No alcohol;Mantener alejado niños
+INSULINA NPH,Unidades var,Inyección,Mañana (AM),Refrigerar;No congelar;No agitar
+INSULINA GLARGINA,Unidades var,Inyección,Noche,Refrigerar;No congelar
+CLORFENIRAMINA,4 mg,Vía Oral (Tragar),3 veces al día,Causa somnolencia;No conducir (Sueño)
+FLUOXETINA,20 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;No conducir (Sueño)
+AMITRIPTILINA,25 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No alcohol
+CARVEDILOL,6.25 mg,Vía Oral (Tragar),2 veces al día (Con comidas),No conducir (Mareo);Tomar agua extra
+METOPROLOL,50 mg,Vía Oral (Tragar),2 veces al día,No conducir (Mareo);No alcohol
+VERAPAMILO,80 mg,Vía Oral (Tragar),3 veces al día,No conducir (Mareo);No triturar
+WARFARINA,5 mg,Vía Oral (Tragar),Noche,No alcohol;Leer etiqueta;Emergencia
+CLOPIDOGREL,75 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;Leer etiqueta
+ESOMEPRAZOL,40 mg,Vía Oral (Tragar),1h ANTES de comer,No triturar;No masticar
+RANITIDINA,150 mg,Vía Oral (Tragar),2 veces al día,No alcohol;No fumar
+HIDROXIDO DE ALUMINIO,10 ml,Vía Oral (Tragar),1h DESPUÉS de comer,Agitar vigorosamente;No tomar otros meds cerca
+METOCLOPRAMIDA,10 mg,Vía Oral (Tragar),1h ANTES de comer,Causa somnolencia;No alcohol
+DOMPERIDONA,10 mg,Vía Oral (Tragar),1h ANTES de comer,No alcohol;Leer etiqueta
+TRIMETOPRIM SULFA,800/160,Vía Oral (Tragar),2 veces al día,Tomar agua extra;Proteger luz solar
+DOXICICLINA,100 mg,Vía Oral (Tragar),2 veces al día,Tomar con agua;Proteger luz solar;No acostarse
+NITROFURANTOINA,100 mg,Vía Oral (Tragar),4 veces al día (Con comidas),Tomar con agua;No alcohol
+FLUCONAZOL,150 mg,Vía Oral (Tragar),Semanal,No embarazo;No lactancia
+KETOCONAZOL,200 mg,Vía Oral (Tragar),Con alimentos,No alcohol;No embarazo
+ACICLOVIR,200 mg,Vía Oral (Tragar),5 veces al día,Tomar agua extra;No compartir
+METHOTREXATE,2.5 mg,Vía Oral (Tragar),Semanal,No embarazo;No alcohol;Proteger luz solar
+PREDNISOLONA,5 mg,Vía Oral (Tragar),Mañana (AM),Con alimentos;No dejar de golpe
+DEXAMETASONA,4 mg,Vía Oral (Tragar),Mañana (AM),Con alimentos;No dejar de golpe
+BETAMETASONA (CREMA),Aplicar,Vía Tópica,2 veces al día,Lavarse las manos;Solo uso externo
+CLOTRIMAZOL (CREMA),Aplicar,Vía Tópica,2 veces al día,Lavarse las manos;No compartir
+OXIDO DE ZINC,Aplicar,Vía Tópica,3 veces al día,Lavarse las manos;Solo uso externo
+CALAMINA (LOCION),Aplicar,Vía Tópica,Según necesidad,Agitar vigorosamente;Solo uso externo
+GOTAS OFTALMICAS (LAGRIMAS),1 gota,Gotas Ojos,Según necesidad,Lavarse las manos;No tocar punta
+TIMOLOL (OFTALMICO),1 gota,Gotas Ojos,2 veces al día,Lavarse las manos;No tocar punta
+CIPROFLOXACINA (OFTALMICO),1 gota,Gotas Ojos,4 veces al día,Lavarse las manos;No compartir
+NEOMICINA (OFTALMICO),1 gota,Gotas Ojos,3 veces al día,Lavarse las manos;No compartir
+OTILONIO BROMURO,40 mg,Vía Oral (Tragar),20 min antes comer,No alcohol;No masticar
+TRIMEBUTINA,200 mg,Vía Oral (Tragar),3 veces al día,Con alimentos;No alcohol
+LOPERAMIDA,2 mg,Vía Oral (Tragar),Según necesidad,Tomar agua extra;No conducir (Sueño)
+SUERO ORAL,Varios,Vía Oral (Tragar),Según necesidad,Refrigerar después de abrir;Desechar 24h
+HIERRO (SULFATO FERROSO),300 mg,Vía Oral (Tragar),Estómago vacío,No con leche;Heces oscuras
+ACIDO FOLICO,1 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;Leer etiqueta
+CALCIO + VIT D,600 mg,Vía Oral (Tragar),Con alimentos,No tomar con hierro;Tomar agua extra
+VITAMINA C,500 mg,Vía Oral (Tragar),Mañana (AM),Masticar (si es tableta);Proteger luz solar
+TIAMINA (VIT B1),300 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;Leer etiqueta
+COMPLEJO B,1 tab,Vía Oral (Tragar),Mañana (AM),Orina amarilla;No alcohol
+ALPRAZOLAM,0.5 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No conducir;No alcohol
+CLONAZEPAM,2 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No conducir;No alcohol
+LORAZEPAM,1 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No conducir;No alcohol
+SERTRALINA,50 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;No dejar de golpe
+ESCITALOPRAM,10 mg,Vía Oral (Tragar),Mañana (AM),No alcohol;No conducir (Mareo)
+QUETIAPINA,25 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No conducir;No alcohol
+RISPERIDONA,2 mg,Vía Oral (Tragar),Noche,Causa somnolencia;No alcohol
+ACIDO VALPROICO,500 mg,Vía Oral (Tragar),2 veces al día (Con comidas),No embarazo;No conducir (Mareo)
+CARBAMAZEPINA,200 mg,Vía Oral (Tragar),2 veces al día,No conducir (Mareo);No alcohol
+GABAPENTINA,300 mg,Vía Oral (Tragar),3 veces al día,Causa somnolencia;No conducir
+PREGABALINA,75 mg,Vía Oral (Tragar),2 veces al día,Causa somnolencia;No conducir (Mareo)
+FENITOINA,100 mg,Vía Oral (Tragar),3 veces al día,Higiene dental;No alcohol
+LAMOTRIGINA,50 mg,Vía Oral (Tragar),2 veces al día,Alertar sarpullido;No alcohol
+LEVOFLOXACINA,500 mg,Vía Oral (Tragar),Mañana (AM),Tomar agua extra;Proteger luz solar
+CLARITROMICINA,500 mg,Vía Oral (Tragar),2 veces al día,No alcohol;Sabor metálico
+TINIDAZOL,1 g,Vía Oral (Tragar),Dosis única (con cena),No alcohol;Sabor metálico
+SECNIDAZOL,1 g,Vía Oral (Tragar),Dosis única,No alcohol;Leer etiqueta
+METRONIDAZOL,500 mg,Vía Oral (Tragar),3 veces al día,No alcohol (Prohibido);Sabor metálico
+ESPIRONOLACTONA,25 mg,Vía Oral (Tragar),Mañana (AM),Tomar con alimentos;No suplementos potasio
+DIGOXINA,0.25 mg,Vía Oral (Tragar),Mañana (AM),Leer etiqueta;Tomar pulso
+NITROGLICERINA (SPRAY),Spray,Sublingual,Emergencia,Sentarse al usar;No agitar
+ISOSORBIDE,10 mg,Sublingual,Según necesidad,Sentarse al usar;No tragar
+SILDENAFIL,50 mg,Vía Oral (Tragar),1h ANTES actividad,No nitratos (Peligro);No alcohol
+TADALAFILO,20 mg,Vía Oral (Tragar),30 min ANTES actividad,No nitratos (Peligro);No alcohol
+DUTASTERIDE,0.5 mg,Vía Oral (Tragar),Mañana (AM),No donar sangre;No tocar embarazadas
+TAMSULOSINA,0.4 mg,Vía Oral (Tragar),30 min DESPUÉS cenar,No conducir (Mareo);Tragar entero
+FINASTERIDE,5 mg,Vía Oral (Tragar),Mañana (AM),No tocar embarazadas;Leer etiqueta
+ETINILESTRADIOL (PLANIF),1 tab,Vía Oral (Tragar),Noche (Misma hora),No fumar;Leer etiqueta
+LEVONORGESTREL (EMERG),1.5 mg,Vía Oral (Tragar),Emergencia (<72h),No es método regular;Puede adelantar ciclo
+MEDROXIPROGESTERONA,Inyección,Inyección,Mensual/Trimestral,Agitar vigorosamente;No masajear sitio
+PARACETAMOL/CODEINA,325/30,Vía Oral (Tragar),3 veces al día,Causa somnolencia;No conducir;No alcohol
+NAPROXENO/ESOMEPRAZOL,500/20,Vía Oral (Tragar),2 veces al día,30 min antes comer;Tragar entero
+COLCHICINA,0.5 mg,Vía Oral (Tragar),Según esquema,No alcohol;Diarrea común
+ALOPURINOL,300 mg,Vía Oral (Tragar),Después de comer,Tomar agua extra;No alcohol"""
 
 # --- 2. LOG DE AUDITORÍA ---
 def registrar_auditoria(profesional, paciente, medicamento, dosis):
@@ -262,7 +366,8 @@ MAPA_VIA = {
     "Vía Vaginal": "25.GIF", "Gárgaras": "58.GIF", "Tomar con agua": "38.GIF",
     "No tragar": "56.GIF", "Uso Nasal (Secuencia)": "10.GIF", "Uso Ojos (Secuencia)": "30.GIF",
     "Uso Oído (Secuencia)": "32.GIF", "Uso Rectal (Secuencia)": "28.GIF",
-    "Uso Vaginal (Secuencia)": "26.GIF", "Óvulo Vaginal": "66.GIF"
+    "Uso Vaginal (Secuencia)": "26.GIF", "Óvulo Vaginal": "66.GIF",
+    "Vía Tópica": "82.GIF" # Asumiendo un icono por defecto o si existe en carpeta
 }
 MAPA_FRECUENCIA = {
     "--- Seleccionar ---": None, "Mañana (AM)": "67.GIF", "Noche": "22.GIF",
@@ -272,7 +377,12 @@ MAPA_FRECUENCIA = {
     "1h ANTES de comer": "05.GIF", "1h DESPUÉS de comer": "06.GIF",
     "2h ANTES de comer": "07.GIF", "2h DESPUÉS de comer": "08.GIF",
     "Con alimentos": "18.GIF", "Estómago vacío": "19.GIF", "Con leche": "68.GIF",
-    "No tomar de noche": "49.GIF", "NO con leche": "23.GIF"
+    "No tomar de noche": "49.GIF", "NO con leche": "23.GIF",
+    "Emergencia": "59.GIF", "Dosis única": "65.GIF", "5 veces al día": "15.GIF", 
+    "Semanal": "21.GIF", "Según necesidad": "42.GIF", "20 min antes comer": "05.GIF",
+    "Según esquema": "78.GIF", "Después de comer": "06.GIF", "Noche (Misma hora)": "22.GIF",
+    "Emergencia (<72h)": "59.GIF", "Mensual/Trimestral": "21.GIF", "30 min ANTES actividad": "05.GIF",
+    "1h ANTES actividad": "05.GIF", "30 min DESPUÉS cenar": "06.GIF", "Dosis única (con cena)": "03.GIF"
 }
 MAPA_ALERTAS = {
     "Venenoso / Tóxico": "81.GIF", "No alcohol": "40.GIF", "No conducir (Sueño)": "50.GIF", 
@@ -282,7 +392,18 @@ MAPA_ALERTAS = {
     "No lactancia": "36.GIF", "No compartir": "54.GIF", "No fumar": "55.GIF", 
     "Tomar agua extra": "57.GIF", "Causa somnolencia": "24.GIF", "Llamar al doctor": "42.GIF", 
     "Emergencia": "59.GIF", "Lavarse las manos": "41.GIF", "Leer etiqueta": "78.GIF", 
-    "Flamable": "80.GIF", "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF"
+    "Flamable": "80.GIF", "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF",
+    "Completar tratamiento": "78.GIF", "No lácteos": "23.GIF", "No conducir (Visión borrosa)": "50.GIF",
+    "No tomar otros meds cerca": "42.GIF", "No acostarse": "42.GIF", "No dejar de golpe": "42.GIF",
+    "Solo uso externo": "81.GIF", "No tocar punta": "41.GIF", "Refrigerar después de abrir": "20.GIF",
+    "Desechar 24h": "81.GIF", "No con leche": "23.GIF", "Heces oscuras": "78.GIF",
+    "No tomar con hierro": "42.GIF", "Masticar (si es tableta)": "43.GIF", "Orina amarilla": "78.GIF",
+    "No conducir": "50.GIF", "Higiene dental": "41.GIF", "Alertar sarpullido": "42.GIF",
+    "Sabor metálico": "42.GIF", "No alcohol (Prohibido)": "40.GIF", "No suplementos potasio": "42.GIF",
+    "Tomar pulso": "42.GIF", "Sentarse al usar": "42.GIF", "No nitratos (Peligro)": "81.GIF",
+    "No donar sangre": "42.GIF", "No tocar embarazadas": "34.GIF", "Tragar entero": "33.GIF",
+    "No es método regular": "78.GIF", "Puede adelantar ciclo": "78.GIF", "No masajear sitio": "41.GIF",
+    "30 min antes comer": "05.GIF", "Diarrea común": "42.GIF"
 }
 
 # --- 6. GENERADOR PDF ---
@@ -490,5 +611,56 @@ with c_action:
                     )
                 except Exception as e:
                     st.error(f"Error del sistema: {e}")
+
+# ==========================================
+# --- 8. MÓDULO EXTRA: GENERACIÓN POR LOTE ---
+# ==========================================
+st.markdown("---")
+with st.expander("⚙️ Generación por Lotes (Administrativo)"):
+    st.warning("Esta función generará 100 PDFs comprimidos en un archivo ZIP. Puede tardar un momento.")
+    if st.button("GENERAR LOTE DE 100 FICHAS"):
+        if not profesional_resp:
+            st.error("Por favor ingrese el Profesional Responsable arriba antes de iniciar el lote.")
+        else:
+            with st.spinner("Procesando lote masivo..."):
+                try:
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+                        # Parsear CSV de texto
+                        f_csv = io.StringIO(DATA_LOTE)
+                        reader = csv.DictReader(f_csv)
+                        
+                        count = 0
+                        for row in reader:
+                            # Parsear alertas separadas por ';'
+                            alertas_lote = [x.strip() for x in row['ALERTAS'].split(';') if x.strip()]
+                            
+                            pdf_bytes = generar_pdf(
+                                paciente="PACIENTE STANDARDIZADO", 
+                                med=row['MEDICAMENTO'], 
+                                dosis=row['DOSIS'], 
+                                via=row['VIA'], 
+                                frec=row['FRECUENCIA'], 
+                                alertas=alertas_lote, 
+                                hacer_braille=True, 
+                                espejo=True, 
+                                hacer_qr=True, 
+                                profesional=profesional_resp
+                            )
+                            
+                            # Nombre de archivo único dentro del zip
+                            safe_name = "".join([c for c in row['MEDICAMENTO'] if c.isalnum() or c in (' ', '-', '_')]).strip()
+                            zf.writestr(f"{safe_name}.pdf", pdf_bytes)
+                            count += 1
+                    
+                    st.success(f"¡Lote generado exitosamente con {count} fichas!")
+                    st.download_button(
+                        label="DESCARGAR ZIP CON LOTE",
+                        data=zip_buffer.getvalue(),
+                        file_name="Lote_Fichas_Dispensacion.zip",
+                        mime="application/zip"
+                    )
+                except Exception as e:
+                    st.error(f"Error en generación masiva: {e}")
 
 st.markdown('<div class="footer-clean">Sistema de Dispensación Inclusiva v11.2</div>', unsafe_allow_html=True)
