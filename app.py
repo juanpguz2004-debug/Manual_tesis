@@ -10,16 +10,15 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Final", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 6.1 (Corregida):** Motor Braille Optimizado + Debug Visual.")
+st.markdown("**Versión 6.2 (Pagina Corregida):** Braille Nativo + Fix Páginas en Blanco.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Asegúrate de subir los iconos.")
 
-# --- 2. MOTOR BRAILLE NATIVO (Robust Braille Engine) ---
+# --- 2. MOTOR BRAILLE NATIVO ---
 class BrailleConverter:
     """
     Convierte texto a coordenadas de puntos Braille (Estándar Español Grado 1).
-    CORREGIDO: Mejor manejo de normalización y números.
     """
     # Mapeo de Puntos (1-6)
     CHAR_MAP = {
@@ -42,10 +41,8 @@ class BrailleConverter:
     @staticmethod
     def text_to_dots(texto):
         dots_sequence = []
-        
-        # 1. Normalización PREVIA al bucle para unir caracteres compuestos (ej: ´ + a = á)
+        # Normalización para asegurar que 'á' sea un solo caracter y no 'a' + tilde
         texto = unicodedata.normalize('NFC', str(texto)).lower()
-        
         is_number = False
         
         for char in texto:
@@ -53,60 +50,47 @@ class BrailleConverter:
                 if not is_number:
                     dots_sequence.append(BrailleConverter.NUM_SIGN)
                     is_number = True
-                # Convertir '1' -> 'a' -> [1]
                 mapped_char = BrailleConverter.NUM_MAP.get(char)
                 dots_sequence.append(BrailleConverter.CHAR_MAP.get(mapped_char, []))
             else:
-                # Si veníamos de números y encontramos un espacio o letra, desactivar modo número
                 if is_number and char not in [',', '.']: 
                     is_number = False 
                 
-                # Obtener puntos, si no existe el caracter, se añade espacio vacío (lista vacía)
                 puntos = BrailleConverter.CHAR_MAP.get(char, [])
                 dots_sequence.append(puntos)
-                
         return dots_sequence
 
 def render_braille_mirror(pdf, text, x_start, y_start):
-    """ Dibuja los puntos en el PDF (Espejado para punzar por detrás) """
+    """ Dibuja los puntos en el PDF y devuelve la posición Y final """
     dots_seq = BrailleConverter.text_to_dots(text)
     
     # Configuración Física
     scale = 1.1
-    r = 0.55 * scale # Radio punto
+    r = 0.55 * scale 
     spacing_dot = 2.5 * scale
     spacing_char = 6.2 * scale
     spacing_line = 11.0 * scale
     margin_right = 190
     
     cur_x, cur_y = x_start, y_start
-    
-    # Espejo: 1<->4, 2<->5, 3<->6 (Para punzar por el reverso)
     mirror = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
 
     for char_dots in dots_seq:
-        # Wrap de línea
         if cur_x + spacing_char > margin_right:
             cur_x = x_start
             cur_y += spacing_line
-            if cur_y > 270: break # Margen inferior
+            # Si nos pasamos de la página, paramos para evitar errores visuales
+            if cur_y > 270: break 
             
-        # Puntos Espejo
         dots_mirror = [mirror[p] for p in char_dots if p in mirror]
         
-        # Guías (Gris claro - visualización celda)
+        # Guías
         pdf.set_fill_color(240, 240, 240)
-        # Coordenadas estándar de la celda braille
         coords = {
-            1: (cur_x, cur_y),
-            2: (cur_x, cur_y + spacing_dot),
-            3: (cur_x, cur_y + spacing_dot * 2),
-            4: (cur_x + spacing_dot, cur_y),
-            5: (cur_x + spacing_dot, cur_y + spacing_dot),
-            6: (cur_x + spacing_dot, cur_y + spacing_dot * 2)
+            1: (cur_x, cur_y), 2: (cur_x, cur_y + spacing_dot), 3: (cur_x, cur_y + spacing_dot * 2),
+            4: (cur_x + spacing_dot, cur_y), 5: (cur_x + spacing_dot, cur_y + spacing_dot), 6: (cur_x + spacing_dot, cur_y + spacing_dot * 2)
         }
         
-        # Dibujar (Negro solo los puntos activos)
         pdf.set_fill_color(0, 0, 0)
         for p in dots_mirror:
             if p in coords:
@@ -114,18 +98,19 @@ def render_braille_mirror(pdf, text, x_start, y_start):
                 pdf.circle(cx, cy, r, 'F')
             
         cur_x += spacing_char
+        
+    return cur_y # Devolvemos la posición final para saber dónde escribir después
 
 # --- 3. GESTIÓN DE IMÁGENES ---
 def get_img(name):
     if not name: return None
     path = os.path.join(ASSETS_DIR, name)
     if os.path.exists(path): return path
-    # Búsqueda insensible a mayúsculas/minúsculas
     for f in os.listdir(ASSETS_DIR):
         if f.lower() == name.lower(): return os.path.join(ASSETS_DIR, f)
     return None
 
-# --- MAPEOS (USP COMPLETO) ---
+# --- MAPEOS ---
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF", "Masticar": "43.GIF", "Sublingual": "46.GIF",
     "Disolver en agua": "45.GIF", "Diluir en agua": "44.GIF", "Inhalador": "71.GIF",
@@ -147,31 +132,29 @@ MAPA_FRECUENCIA = {
     "No tomar de noche": "49.GIF", "NO con leche": "23.GIF"
 }
 MAPA_ALERTAS = {
-    "Venenoso / Tóxico": "81.GIF",
-    "No alcohol": "40.GIF", "No conducir (Sueño)": "50.GIF", "No conducir (Mareo)": "72.GIF",
-    "No triturar": "33.GIF", "No masticar": "48.GIF", "Agitar vigorosamente": "39.GIF",
-    "Refrigerar": "20.GIF", "No refrigerar": "52.GIF", "No congelar": "51.GIF",
-    "Proteger luz solar": "12.GIF", "No embarazo": "34.GIF", "No lactancia": "36.GIF",
-    "No compartir": "54.GIF", "No fumar": "55.GIF", "Tomar agua extra": "57.GIF",
-    "Causa somnolencia": "24.GIF", "Llamar al doctor": "42.GIF", "Emergencia": "59.GIF",
-    "Lavarse las manos": "41.GIF", "Leer etiqueta": "78.GIF", "Flamable": "80.GIF",
-    "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF"
+    "Venenoso / Tóxico": "81.GIF", "No alcohol": "40.GIF", "No conducir (Sueño)": "50.GIF", 
+    "No conducir (Mareo)": "72.GIF", "No triturar": "33.GIF", "No masticar": "48.GIF", 
+    "Agitar vigorosamente": "39.GIF", "Refrigerar": "20.GIF", "No refrigerar": "52.GIF", 
+    "No congelar": "51.GIF", "Proteger luz solar": "12.GIF", "No embarazo": "34.GIF", 
+    "No lactancia": "36.GIF", "No compartir": "54.GIF", "No fumar": "55.GIF", 
+    "Tomar agua extra": "57.GIF", "Causa somnolencia": "24.GIF", "Llamar al doctor": "42.GIF", 
+    "Emergencia": "59.GIF", "Lavarse las manos": "41.GIF", "Leer etiqueta": "78.GIF", 
+    "Flamable": "80.GIF", "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF"
 }
 
 # --- 4. GENERADOR PDF ---
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
     pdf = FPDF()
     
-    # PÁGINA 1: VISUAL (Pictogramas)
+    # PÁGINA 1: VISUAL
     pdf.add_page()
     pdf.set_font("Arial", "B", 24)
-    # Convertimos a string para seguridad
     pdf.cell(0, 15, txt=f"{str(med).upper()}", ln=True, align='C')
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, txt=f"PACIENTE: {str(paciente).upper()} | DOSIS: {str(dosis).upper()}", ln=True, align='C')
     pdf.line(10, 35, 200, 35)
     
-    # Bloque Vía/Frecuencia
+    # Bloque Vía/Frec
     y_start = 50
     pdf.set_xy(20, y_start)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
@@ -214,31 +197,41 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
     # PÁGINA 2: BRAILLE ENGINE
     if hacer_braille:
         pdf.add_page()
+        # IMPORTANTE: Desactivar salto automático para evitar páginas en blanco por el footer
+        pdf.set_auto_page_break(auto=False)
+        
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, txt="GUÍA TÁCTIL (BRAILLE ESPEJO)", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
         pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Punzar puntos negros por el reverso.", align='C')
         pdf.ln(10)
         
-        # Construcción texto braille
+        # Texto Braille
         al_str = ", ".join(alertas) if alertas else "NINGUNA"
         t_raw = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec}"
         
-        # Renderizado Braille
-        render_braille_mirror(pdf, t_raw, 10, 45)
+        # Renderizado
+        final_y = render_braille_mirror(pdf, t_raw, 10, 45)
         
-        # DEBUG VISUAL (Añadimos esto para confirmar que el texto cambia)
-        pdf.set_y(-20)
+        # Pie de página y Debug (Controlando posición para no saltar página)
+        # Si el braille ocupa casi toda la hoja (>250), creamos nueva página para el footer
+        if final_y > 250:
+            pdf.add_page()
+            pdf.set_auto_page_break(auto=False)
+            
+        pdf.set_y(-25) # Ir al final de la página actual
+        
         pdf.set_font("Courier", "", 8)
-        pdf.set_text_color(100, 100, 100) # Gris
-        pdf.cell(0, 5, txt=f"Referencia Texto Generado: {t_raw[:90]}...", align='C', ln=1)
-        pdf.set_text_color(0, 0, 0) # Volver a negro
+        pdf.set_text_color(100, 100, 100)
+        # Cortamos el texto si es muy largo para que no rompa el diseño
+        texto_debug = (t_raw[:85] + '...') if len(t_raw) > 85 else t_raw
+        pdf.cell(0, 5, txt=f"Referencia: {texto_debug}", align='C', ln=1)
         
-        pdf.set_y(-10)
+        pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 10, txt="SMEFI System - Braille Engine v6.1", align='C')
+        pdf.cell(0, 5, txt="SMEFI System - Braille Engine v6.2", align='C')
 
-    return bytes(pdf.output(dest='S'))
+    return bytes(pdf.output(dest='S')) # Retornamos bytes para Streamlit
 
 # --- 5. INTERFAZ UI ---
 c1, c2 = st.columns([1, 3])
@@ -246,7 +239,6 @@ with c2: st.subheader("Datos del Tratamiento")
 
 with st.container(border=True):
     ca, cb = st.columns(2)
-    # Usamos text_input sin caché excesivo
     nom = ca.text_input("Nombre Paciente", value="Juan Perez")
     med = ca.text_input("Medicamento", value="AMOXICILINA")
     dos = cb.text_input("Dosis", value="500 mg")
@@ -276,11 +268,9 @@ with c4:
 st.write("")
 if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
     try:
-        # Generar
         pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra)
         st.success("✅ ¡Documento generado correctamente!")
         
-        # Generar ID único para evitar caché del navegador
         file_id = int(time.time())
         st.download_button(
             label="📥 DESCARGAR PDF",
