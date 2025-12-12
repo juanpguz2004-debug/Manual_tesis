@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 import io
 import tempfile
 import csv
+import zipfile  # <--- NUEVA LIBRERÍA NECESARIA
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,24 +27,9 @@ st.set_page_config(
 # ==========================================
 st.markdown("""
 <style>
-    /* VARIABLES Y ANIMACIONES */
-    :root {
-        --transition-speed: 0.3s;
-    }
-
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-
-    /* CONTENEDOR PRINCIPAL */
-    .block-container {
-        padding-top: 2rem;
-        padding-bottom: 5rem;
-        animation: fadeIn 0.8s ease-out;
-    }
-
-    /* TARJETAS (Cards) REACTIVAS */
+    :root { --transition-speed: 0.3s; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .block-container { padding-top: 2rem; padding-bottom: 5rem; animation: fadeIn 0.8s ease-out; }
     div[data-testid="stVerticalBlockBorderWrapper"] {
         border-radius: 12px !important;
         border: 1px solid rgba(128, 128, 128, 0.2) !important;
@@ -51,78 +37,23 @@ st.markdown("""
         transition: all var(--transition-speed) cubic-bezier(0.25, 0.8, 0.25, 1);
         padding: 20px !important;
     }
-
     div[data-testid="stVerticalBlockBorderWrapper"]:hover {
         transform: translateY(-5px);
         box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
         border-color: var(--primary-color) !important;
     }
-
-    /* INPUTS Y SELECTS */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
         border-radius: 8px !important;
         border: 1px solid rgba(128, 128, 128, 0.3) !important;
-        transition: all 0.2s ease;
         background-color: transparent !important;
     }
-
-    .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus-within {
-        border-color: var(--primary-color) !important;
-        box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb), 0.2);
-    }
-
-    /* BOTONES */
     div.stButton > button {
-        border-radius: 8px;
-        font-weight: 600;
-        letter-spacing: 0.5px;
-        transition: all 0.2s ease-in-out;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        border: none;
+        border-radius: 8px; font-weight: 600; letter-spacing: 0.5px;
+        transition: all 0.2s ease-in-out; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: none;
     }
-
-    div.stButton > button:hover {
-        transform: scale(1.02);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }
-
-    div.stButton > button:active {
-        transform: scale(0.98);
-    }
-
-    /* CHECKBOX Y TOGGLES */
-    label[data-baseweb="checkbox"] {
-        transition: color 0.2s;
-    }
-    label[data-baseweb="checkbox"]:hover {
-        color: var(--primary-color);
-        cursor: pointer;
-    }
-
-    /* IMAGENES */
-    div[data-testid="stImage"] img {
-        transition: transform 0.3s ease;
-        border-radius: 8px;
-    }
-    div[data-testid="stImage"] img:hover {
-        transform: scale(1.1);
-    }
-
-    /* TIPOGRAFIA */
-    h1, h2, h3 {
-        font-family: 'Segoe UI', sans-serif;
-        color: var(--text-color);
-    }
-    
-    /* Footer */
-    .footer-clean {
-        margin-top: 50px;
-        padding-top: 20px;
-        border-top: 1px solid rgba(128,128,128,0.2);
-        text-align: center;
-        font-size: 0.8rem;
-        opacity: 0.7;
-    }
+    div.stButton > button:hover { transform: scale(1.02); box-shadow: 0 5px 15px rgba(0,0,0,0.1); }
+    h1, h2, h3 { font-family: 'Segoe UI', sans-serif; color: var(--text-color); }
+    .footer-clean { margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(128,128,128,0.2); text-align: center; font-size: 0.8rem; opacity: 0.7; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -138,15 +69,16 @@ def registrar_auditoria(profesional, paciente, medicamento, dosis):
             if not existe:
                 writer.writerow(["FECHA_HORA", "PROFESIONAL", "PACIENTE", "MEDICAMENTO", "DOSIS", "ESTADO"])
             ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
-            writer.writerow([ahora, profesional, "ANONIMIZADO" , medicamento, dosis, "GENERADO"])
+            writer.writerow([ahora, profesional, paciente, medicamento, dosis, "GENERADO"])
     except Exception as e:
         st.error(f"Error al guardar bitácora: {e}")
 
 # --- 3. GENERADOR QR DE AUDIO ---
 def generar_qr_audio(texto_a_leer):
     if len(texto_a_leer) > 250:
-        st.warning("Texto truncado por seguridad del QR.")
-    texto_seguro = texto_a_leer[:250] 
+        texto_seguro = texto_a_leer[:250] 
+    else:
+        texto_seguro = texto_a_leer
     base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
     qr = qrcode.QRCode(box_size=10, border=2)
@@ -245,7 +177,7 @@ class BrailleLib:
             cur_y += s_line
         return cur_y
 
-# --- 5. GESTIÓN DE RECURSOS ---
+# --- 5. GESTIÓN DE RECURSOS Y DATOS ---
 def get_img(name):
     if not name: return None
     target = name.lower()
@@ -253,7 +185,6 @@ def get_img(name):
         if f.lower() == target: return os.path.join(ASSETS_DIR, f)
     return None
 
-# --- DATOS ---
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF", "Masticar": "43.GIF", "Sublingual": "46.GIF",
     "Disolver en agua": "45.GIF", "Diluir en agua": "44.GIF", "Inhalador": "71.GIF",
@@ -272,7 +203,7 @@ MAPA_FRECUENCIA = {
     "1h ANTES de comer": "05.GIF", "1h DESPUÉS de comer": "06.GIF",
     "2h ANTES de comer": "07.GIF", "2h DESPUÉS de comer": "08.GIF",
     "Con alimentos": "18.GIF", "Estómago vacío": "19.GIF", "Con leche": "68.GIF",
-    "No tomar de noche": "49.GIF", "NO con leche": "23.GIF"
+    "No tomar de noche": "49.GIF", "NO con leche": "23.GIF", "Cada 8 horas": "16.GIF", "Cada 6 horas": "15.GIF"
 }
 MAPA_ALERTAS = {
     "Venenoso / Tóxico": "81.GIF", "No alcohol": "40.GIF", "No conducir (Sueño)": "50.GIF", 
@@ -285,7 +216,22 @@ MAPA_ALERTAS = {
     "Flamable": "80.GIF", "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF"
 }
 
-# --- 6. GENERADOR PDF ---
+# --- LISTA PRECARGADA DE EJEMPLO (AMPLIABLE A 200) ---
+MEDICAMENTOS_TOP_COLOMBIA = [
+    {"med": "Acetaminofén 500mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Cada 6 horas", "alertas": ["No alcohol", "Leer etiqueta"]},
+    {"med": "Losartán 50mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Mañana (AM)", "alertas": ["No embarazo", "Llamar al doctor"]},
+    {"med": "Amoxicilina 500mg", "dosis": "1 cápsula", "via": "Vía Oral (Tragar)", "frec": "Cada 8 horas", "alertas": ["Completar tratamiento", "No alcohol"]},
+    {"med": "Omeprazol 20mg", "dosis": "1 cápsula", "via": "Vía Oral (Tragar)", "frec": "Estómago vacío", "alertas": ["Mañana (AM)"]},
+    {"med": "Ibuprofeno 400mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Con alimentos", "alertas": ["No alcohol", "Leer etiqueta"]},
+    {"med": "Salbutamol Inhalador", "dosis": "2 Puffs", "via": "Inhalador", "frec": "Cada 6 horas", "alertas": ["Agitar vigorosamente", "Lavarse las manos"]},
+    {"med": "Metformina 850mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Con alimentos", "alertas": ["No alcohol"]},
+    {"med": "Amlodipino 5mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Mañana (AM)", "alertas": ["No conducir (Mareo)"]},
+    {"med": "Atorvastatina 20mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Noche", "alertas": ["No alcohol", "No embarazo"]},
+    {"med": "Loratadina 10mg", "dosis": "1 tableta", "via": "Vía Oral (Tragar)", "frec": "Noche", "alertas": ["Causa somnolencia"]},
+    # ... Aquí puedes seguir añadiendo hasta llegar a 200 ...
+]
+
+# --- 6. GENERADOR PDF (CORE) ---
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr, profesional):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -334,16 +280,17 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES:", ln=1)
     cx, cy, col = 20, y_al+15, 0
-    for al in alertas:
-        img_al = get_img(MAPA_ALERTAS.get(al))
-        if img_al:
-            if col == 4: cx, cy, col = 20, cy+50, 0
-            pdf.set_xy(cx-5, cy)
-            pdf.set_font("Arial", "B", 8)
-            pdf.multi_cell(40, 3, txt=str(al).upper(), align='C')
-            pdf.image(img_al, x=cx, y=pdf.get_y()+2, w=22)
-            cx += 45
-            col += 1
+    if alertas:
+        for al in alertas:
+            img_al = get_img(MAPA_ALERTAS.get(al))
+            if img_al:
+                if col == 4: cx, cy, col = 20, cy+50, 0
+                pdf.set_xy(cx-5, cy)
+                pdf.set_font("Arial", "B", 8)
+                pdf.multi_cell(40, 3, txt=str(al).upper(), align='C')
+                pdf.image(img_al, x=cx, y=pdf.get_y()+2, w=22)
+                cx += 45
+                col += 1
 
     if hacer_qr:
         al_str = ", ".join(alertas) if alertas else "Ninguna"
@@ -398,6 +345,35 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
 
     return bytes(pdf.output(dest='S'))
 
+# --- FUNCIÓN NUEVA: GENERAR ZIP MASIVO ---
+def generar_pack_masivo(profesional, hacer_braille, espejo, hacer_qr):
+    mem_zip = io.BytesIO()
+    
+    with zipfile.ZipFile(mem_zip, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        progress_bar = st.progress(0)
+        total = len(MEDICAMENTOS_TOP_COLOMBIA)
+        
+        for i, item in enumerate(MEDICAMENTOS_TOP_COLOMBIA):
+            pdf_bytes = generar_pdf(
+                paciente="GENERALIZADO", # Nombre genérico
+                med=item['med'],
+                dosis=item['dosis'],
+                via=item['via'],
+                frec=item['frec'],
+                alertas=item.get('alertas', []),
+                hacer_braille=hacer_braille,
+                espejo=espejo,
+                hacer_qr=hacer_qr,
+                profesional=profesional
+            )
+            # Limpiar nombre de archivo
+            safe_name = "".join([c for c in item['med'] if c.isalnum() or c in (' ', '-', '_')]).strip()
+            zf.writestr(f"{safe_name}.pdf", pdf_bytes)
+            progress_bar.progress((i + 1) / total)
+            
+    mem_zip.seek(0)
+    return mem_zip.getvalue()
+
 # ==========================================
 # --- 7. INTERFAZ UI (LAYOUT REACT) ---
 # ==========================================
@@ -406,89 +382,114 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
 st.markdown("<h1>Sistema de Dispensación Inclusiva</h1>", unsafe_allow_html=True)
 st.markdown("<p style='opacity:0.6; margin-bottom: 30px;'>Gestión Farmacéutica Accesible • Colombia</p>", unsafe_allow_html=True)
 
-# Grid Layout
-col_main_1, col_main_2 = st.columns([1.5, 2], gap="medium")
-
-with col_main_1:
-    # Tarjeta 1: Admisión
-    with st.container(border=True):
-        st.markdown("### Admisión y Datos")
-        profesional_resp = st.text_input("Profesional Responsable", placeholder="Dr. / Q.F. Nombre Apellido")
-        nom = st.text_input("Nombre del Paciente", placeholder="Nombre del paciente")
-
-    # Tarjeta 2: Configuración
-    with st.container(border=True):
-        st.markdown("### Configuración de Salida")
-        bra = st.toggle("Guía Braille", value=True)
-        espejo = st.toggle("Modo Espejo (Punzado)", value=True)
-        qr_act = st.toggle("QR de Audio", value=True)
-
-with col_main_2:
-    # Tarjeta 3: Prescripción
-    with st.container(border=True):
-        st.markdown("### Prescripción Médica")
-        
-        c_med1, c_med2 = st.columns(2)
-        med = c_med1.text_input("Medicamento", placeholder="Nombre del medicamento")
-        dos = c_med2.text_input("Dosis", placeholder="Dosis del medicamento")
-
-        st.markdown("---")
-        
-        c_sel1, c_sel2 = st.columns(2)
-        v = c_sel1.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
-        f = c_sel2.selectbox("Frecuencia", list(MAPA_FRECUENCIA.keys()))
-        
-        # Micro-visualización
-        c_img1, c_img2 = st.columns(2)
-        icon_via = get_img(MAPA_VIA.get(v))
-        if icon_via: c_img1.image(icon_via, width=50)
-        
-        icon_frec = get_img(MAPA_FRECUENCIA.get(f))
-        if icon_frec: c_img2.image(icon_frec, width=50)
-
-# Sección Full Width: Alertas
+# Tarjeta Principal: Configuración Global y Profesional
 with st.container(border=True):
-    st.markdown("### Seguridad del Paciente")
-    a = st.multiselect("Seleccione precauciones:", list(MAPA_ALERTAS.keys()))
-    if a:
-        st.write("")
-        cols_alert = st.columns(8)
-        for i, al in enumerate(a):
-            im = get_img(MAPA_ALERTAS.get(al))
-            if im: cols_alert[i%8].image(im, width=40)
+    col_adm1, col_adm2 = st.columns(2)
+    profesional_resp = col_adm1.text_input("Profesional Responsable", placeholder="Dr. / Q.F. Nombre Apellido")
+    
+    # Configuración de Salida Global
+    col_adm2.markdown("**Configuración de Salida**")
+    c_cfg1, c_cfg2, c_cfg3 = col_adm2.columns(3)
+    bra = c_cfg1.toggle("Guía Braille", value=True)
+    espejo = c_cfg2.toggle("Modo Espejo", value=True)
+    qr_act = c_cfg3.toggle("QR de Audio", value=True)
 
-# Zona de Acción (Footer flotante)
 st.markdown("---")
-c_legal, c_action = st.columns([2, 1])
 
-with c_legal:
-    st.markdown("**Declaración de Responsabilidad**")
-    st.caption("Al generar este documento, certifico que la información ingresada corresponde fielmente a la prescripción médica original. Los datos son procesados temporalmente conforme a la Ley 1581/2012.")
-    aceptar_terminos = st.checkbox("Acepto los términos y condiciones")
+# --- PESTAÑAS PARA MODOS DE TRABAJO ---
+tab1, tab2 = st.tabs(["💊 Prescripción Individual", "📦 Generación Masiva (Top 200)"])
 
-with c_action:
-    st.write("")
-    st.write("")
-    if st.button("GENERAR DOCUMENTO PDF", type="primary"):
+# === PESTAÑA 1: INDIVIDUAL ===
+with tab1:
+    col_main_1, col_main_2 = st.columns([1, 2], gap="medium")
+    
+    with col_main_1:
+        with st.container(border=True):
+            nom = st.text_input("Nombre del Paciente", placeholder="Nombre del paciente")
+            
+    with col_main_2:
+        with st.container(border=True):
+            st.markdown("### Datos del Medicamento")
+            c_med1, c_med2 = st.columns(2)
+            med = c_med1.text_input("Medicamento", placeholder="Nombre del medicamento")
+            dos = c_med2.text_input("Dosis", placeholder="Dosis del medicamento")
+
+            st.markdown("---")
+            c_sel1, c_sel2 = st.columns(2)
+            v = c_sel1.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
+            f = c_sel2.selectbox("Frecuencia", list(MAPA_FRECUENCIA.keys()))
+            
+            # Micro-visualización
+            c_img1, c_img2 = st.columns(2)
+            icon_via = get_img(MAPA_VIA.get(v))
+            if icon_via: c_img1.image(icon_via, width=50)
+            icon_frec = get_img(MAPA_FRECUENCIA.get(f))
+            if icon_frec: c_img2.image(icon_frec, width=50)
+
+    # Sección Alertas
+    with st.container(border=True):
+        st.markdown("### Seguridad del Paciente")
+        a = st.multiselect("Seleccione precauciones:", list(MAPA_ALERTAS.keys()))
+        if a:
+            st.write("")
+            cols_alert = st.columns(8)
+            for i, al in enumerate(a):
+                im = get_img(MAPA_ALERTAS.get(al))
+                if im: cols_alert[i%8].image(im, width=40)
+
+    # Footer Tab 1
+    st.markdown("<br>", unsafe_allow_html=True)
+    c_legal, c_action = st.columns([2, 1])
+    with c_legal:
+        st.caption("Al generar, confirma que los datos corresponden a la orden médica.")
+    with c_action:
+        if st.button("GENERAR PDF INDIVIDUAL", type="primary"):
+            if not profesional_resp or not nom:
+                st.error("Falta Profesional o Paciente")
+            else:
+                with st.spinner("Creando PDF..."):
+                    try:
+                        pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
+                        registrar_auditoria(profesional_resp, nom, med, dos)
+                        file_id = int(time.time())
+                        st.download_button(
+                            label="DESCARGAR PDF",
+                            data=pdf_bytes,
+                            file_name=f"Guia_{med}_{file_id}.pdf",
+                            mime="application/pdf"
+                        )
+                        st.success("¡Hecho!")
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+
+# === PESTAÑA 2: MASIVO ===
+with tab2:
+    st.info("💡 Este módulo genera automáticamente un archivo .ZIP con las fichas de los medicamentos más comunes en Colombia. El nombre del paciente se ocultará (GENERALIZADO).")
+    
+    st.markdown(f"**Medicamentos cargados en base de datos:** {len(MEDICAMENTOS_TOP_COLOMBIA)} items")
+    
+    with st.expander("Ver lista de medicamentos cargados"):
+        st.json(MEDICAMENTOS_TOP_COLOMBIA)
+        
+    st.markdown("### Generar Pack")
+    if st.button("GENERAR PACK COMPLETO (.ZIP)", type="primary", use_container_width=True):
         if not profesional_resp:
-            st.error("Requerido: Profesional Responsable")
-        elif not aceptar_terminos:
-            st.warning("Requerido: Aceptar Términos")
+            st.error("Por favor ingrese el nombre del Profesional Responsable arriba.")
         else:
-            with st.spinner("Procesando solicitud..."):
+            with st.spinner("Procesando lote de medicamentos... esto puede tomar unos momentos"):
                 try:
-                    pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
-                    registrar_auditoria(profesional_resp, nom, med, dos)
+                    zip_bytes = generar_pack_masivo(profesional_resp, bra, espejo, qr_act)
+                    st.success("¡Lote generado exitosamente!")
                     
-                    st.success("Documento listo")
-                    file_id = int(time.time())
+                    ahora_str = datetime.now().strftime("%Y%m%d_%H%M")
                     st.download_button(
-                        label="DESCARGAR ARCHIVO",
-                        data=pdf_bytes,
-                        file_name=f"Guia_{med}_{file_id}.pdf",
-                        mime="application/pdf"
+                        label="📥 DESCARGAR PACK COMPLETOS (ZIP)",
+                        data=zip_bytes,
+                        file_name=f"Pack_Medicamentos_Col_{ahora_str}.zip",
+                        mime="application/zip",
+                        use_container_width=True
                     )
                 except Exception as e:
-                    st.error(f"Error del sistema: {e}")
+                    st.error(f"Error generando el masivo: {e}")
 
-st.markdown('<div class="footer-clean">Sistema de Dispensación Inclusiva v11.2</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer-clean">Sistema de Dispensación Inclusiva v11.3 (Módulo Masivo)</div>', unsafe_allow_html=True)
