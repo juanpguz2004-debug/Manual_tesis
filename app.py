@@ -11,8 +11,8 @@ from datetime import datetime
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
-st.set_page_config(page_title="SMEFI Hospitalario", page_icon="🏥", layout="wide")
-st.title("🏥 SMEFI - Sistema de Dispensación Inclusiva")
+st.set_page_config(page_title="Servicio generativo de manual de apoyo", page_icon="🏥", layout="wide")
+st.title("Servicio generativo de manual de apoyo inclusivo")
 st.markdown("**Versión 13.0:** Trazabilidad (Hora), Disclaimer Legal y QR Anónimo.")
 
 if not os.path.exists(ASSETS_DIR):
@@ -284,22 +284,23 @@ def generar_pdf(paciente, farmaceutico, med, dosis, via, frec, alertas, hacer_br
     return bytes(pdf.output(dest='S'))
 
 # --- 6. INTERFAZ UI ---
-c2 = st.columns([1, 3])
-
+c1, c2 = st.columns([1, 3])
+with c1:
+    st.subheader("Servicio de apoyo")
 with c2: 
-    st.subheader("Módulo de registro")
+    st.subheader("Registro de datos")
 
 with st.container(border=True):
     col_auth, col_data = st.columns([1, 3])
-    farmaceutico = col_auth.text_input("Responsable", "Nombre del responsable")
+    farmaceutico = col_auth.text_input("Responsable", "inserte nombre del responsable")
     
-    nom = col_data.text_input("Nombre Paciente", "inserte el nombre del paciente")
+    nom = col_data.text_input("Nombre Paciente", "inserte nombre del paciente")
     
     # 3. INPUT ABIERTO CON ADVERTENCIA (Requerimiento)
     c_med, c_dos = col_data.columns(2)
     
     # Text input libre
-    med = c_med.text_input("Medicamento (Nombre Genérico)", "inserte el nombre del medicamento")
+    med = c_med.text_input("Medicamento (Nombre Genérico)", "inserte nombre del medicamento")
     if med:
         c_med.caption("⚠ Verifique ortografía contra receta.")
         
@@ -337,7 +338,7 @@ with c4:
 st.write("")
 # Botón de generación con disclaimer visual
 st.caption("Al generar este documento, el profesional confirma que ha validado los datos con la prescripción médica.")
-if st.button("🖨️ GENERAR DOCUMENTO CLÍNICO", type="primary", use_container_width=True):
+if st.button("GENERAR DOCUMENTO", type="primary", use_container_width=True):
     try:
         pdf_bytes = generar_pdf(nom, farmaceutico, med, dos, v, f, a, bra, espejo, qr_act)
         st.success("✅ Documento generado exitosamente.")
