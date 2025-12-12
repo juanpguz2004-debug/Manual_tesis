@@ -10,16 +10,15 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 # --- 2. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión Final:** Braille en Hoja Independiente + Pictogramas USP.")
+st.markdown("**Versión Final:** Braille Multipágina (Paginación Automática) + Pictogramas USP.")
 
-# Verificación de carpeta
 if os.path.exists(ASSETS_DIR):
     archivos_reales = os.listdir(ASSETS_DIR)
     st.sidebar.success(f"✅ Librería USP conectada: {len(archivos_reales)} archivos.")
 else:
     st.sidebar.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}")
 
-# --- 3. DICCIONARIO BRAILLE (ESTÁNDAR 6 PUNTOS) ---
+# --- 3. DICCIONARIO BRAILLE ---
 BRAILLE_CHARS = {
     'A': [1], 'B': [1,2], 'C': [1,4], 'D': [1,4,5], 'E': [1,5],
     'F': [1,2,4], 'G': [1,2,4,5], 'H': [1,2,5], 'I': [2,4], 'J': [2,4,5],
@@ -32,35 +31,54 @@ BRAILLE_CHARS = {
     '(': [2,3,5,6], ')': [2,3,5,6], '/': [3,4], '-': [3,6]
 }
 
-# --- 4. MOTOR BRAILLE ---
-def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
+# --- 4. MOTOR BRAILLE CON PAGINACIÓN ---
+def dibujar_braille_paginado(pdf, texto_completo, x_inicial, y_inicial):
     """
-    Dibuja los puntos Braille en el PDF invirtiendo columnas para efecto espejo.
+    Dibuja Braille espejado. Si se acaba la hoja, crea una nueva automáticamente.
     """
+    # Limpieza de texto
     texto = ''.join(c for c in unicodedata.normalize('NFD', texto_completo) if unicodedata.category(c) != 'Mn').upper()
     
     current_x = x_inicial
     current_y = y_inicial
     
-    scale = 1.2
+    # Configuración de tamaño (OPTIMIZADO PARA ESPACIO)
+    scale = 1.0           # Escala 1.0 es el estándar legible mínimo
     dot_radius = 0.5 * scale
-    w_dot = 2.5 * scale   
-    h_dot = 2.5 * scale   
-    w_char = 6.5 * scale  
-    h_line = 12.0 * scale 
-    margin_right = 190    
+    w_dot = 2.3 * scale   # Distancia horizontal entre puntos
+    h_dot = 2.3 * scale   # Distancia vertical entre puntos
+    w_char = 6.0 * scale  # Ancho de celda
+    h_line = 10.0 * scale # Altura de renglón
     
+    margin_right = 190    # Margen derecho (mm)
+    margin_bottom = 260   # Margen inferior (mm) - Deja espacio para pie de página
+    margin_top_new_page = 40 # Donde empezar en la nueva hoja
+
+    # Mapeo Espejo (1<->4, 2<->5, 3<->6)
     mirror_map = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
 
     for char in texto:
+        # 1. ¿Cabe en la línea actual?
         if current_x + w_char > margin_right:
-            current_x = x_inicial 
-            current_y += h_line   
+            current_x = x_inicial     # Reset X
+            current_y += h_line       # Bajar Y (Nuevo renglón)
+            
+        # 2. ¿Cabe en la página actual?
+        if current_y + h_line > margin_bottom:
+            pdf.add_page()            # NUEVA PÁGINA
+            
+            # Re-imprimir encabezado de guía en la nueva hoja
+            pdf.set_font("Arial", "I", 10)
+            pdf.cell(0, 10, txt="...continuación Guía Táctil (Braille Espejo)...", ln=True, align='C')
+            
+            current_x = x_inicial     # Reset X
+            current_y = margin_top_new_page # Reset Y arriba
             
         puntos = BRAILLE_CHARS.get(char, [])
         puntos_espejo = [mirror_map[p] for p in puntos]
         
-        pdf.set_fill_color(245, 245, 245) # Gris guía
+        # Dibujar Guía Gris (Celda vacía)
+        pdf.set_fill_color(245, 245, 245)
         positions = {
             1: (current_x, current_y),
             2: (current_x, current_y + h_dot),
@@ -70,22 +88,19 @@ def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
             6: (current_x + w_dot, current_y + h_dot * 2),
         }
         
-        pdf.set_fill_color(0, 0, 0) # Negro
+        # Dibujar Puntos Negros (Activos)
+        pdf.set_fill_color(0, 0, 0)
         for p_num in puntos_espejo:
             pos = positions[p_num]
             pdf.circle(pos[0], pos[1], dot_radius, 'F')
             
         current_x += w_char
 
-# --- 5. FUNCIONES AUXILIARES (CORREGIDA) ---
+# --- 5. FUNCIONES AUXILIARES ---
 def ruta_imagen_segura(nombre_objetivo):
-    # PROTECCIÓN CONTRA NONE (Esta línea arregla el error)
-    if not nombre_objetivo: 
-        return None
-        
+    if not nombre_objetivo: return None
     ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
     if os.path.exists(ruta_exacta): return ruta_exacta
-    
     for archivo_real in os.listdir(ASSETS_DIR):
         if archivo_real.lower() == nombre_objetivo.lower():
             return os.path.join(ASSETS_DIR, archivo_real)
@@ -131,7 +146,7 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()} | DOSIS: {dosis.upper()}", ln=True, align='C')
     pdf.line(10, 35, 200, 35)
     
-    # Pictogramas
+    # Pictogramas (Texto Arriba)
     y_bloque_1 = 50 
     
     # Vía
@@ -185,33 +200,34 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
                 x_curr += 45
                 count += 1
 
-    # === PÁGINA 2: BRAILLE (Hoja Independiente) ===
+    # === PÁGINA 2+: BRAILLE (Multipágina Automática) ===
     if es_ciego:
-        pdf.add_page()
+        pdf.add_page() # Primera página de Braille
         
         # Encabezado Braille
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, txt="GUÍA TÁCTIL (BRAILLE ESPEJO)", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
-        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Esta página contiene el patrón de puntos invertido. Coloque la hoja sobre una superficie blanda y presione los puntos negros con un punzón.", align='C')
-        pdf.ln(10)
+        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Punzar puntos negros por el reverso.", align='C')
+        pdf.ln(5)
         
-        # Construir texto completo
+        # Construcción del Texto
         alertas_str = ", ".join(lista_alertas) if lista_alertas else "NINGUNA"
-        # Manejo seguro de frecuencia (si es None, poner texto vacío)
         frec_texto = frecuencia_key if frecuencia_key else "NO INDICADO"
         
+        # Información completa
         texto_completo = (
-            f"PAC:{paciente}. MED:{medicamento} {dosis}. "
-            f"VIA:{via_key}. TOMA:{frec_texto}. "
-            f"PRE:{alertas_str}."
+            f"PACIENTE: {paciente}. MEDICAMENTO: {medicamento} {dosis}. "
+            f"VIA: {via_key}. TOMA: {frec_texto}. "
+            f"PRECAUCIONES: {alertas_str}."
         )
         
-        # Dibujar Braille
+        # Dibujar Puntos (Con soporte multipágina)
         braille_x = 10
         braille_y = 40
-        dibujar_braille_multilinea(pdf, texto_completo, braille_x, braille_y)
+        dibujar_braille_paginado(pdf, texto_completo, braille_x, braille_y)
         
+        # Pie de página (Solo en la última hoja generada)
         pdf.set_y(-15)
         pdf.set_font("Arial", "I", 8)
         pdf.cell(0, 10, txt="Sistema SMEFI - Módulo de Accesibilidad Táctil", align='C')
@@ -225,7 +241,7 @@ with col1:
     med = st.text_input("Medicamento", "AMOXICILINA")
 with col2:
     dosis = st.text_input("Dosis", "500 MG")
-    es_ciego = st.toggle("Generar Guía Braille (Hoja Extra)")
+    es_ciego = st.toggle("Generar Guía Braille Completa")
 
 st.divider()
 
@@ -236,15 +252,13 @@ with c3:
     frec_sel = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
     
     cols_prev = st.columns(2)
-    # Previsualización segura
     if via_sel:
         r = ruta_imagen_segura(MAPA_VIA[via_sel])
         if r: cols_prev[0].image(r, width=70)
     
-    # Aquí estaba el error anterior:
     if frec_sel:
-        nombre_archivo = MAPA_FRECUENCIA.get(frec_sel) # Obtiene el nombre o None
-        if nombre_archivo: # Solo si no es None buscamos la ruta
+        nombre_archivo = MAPA_FRECUENCIA.get(frec_sel)
+        if nombre_archivo:
             r = ruta_imagen_segura(nombre_archivo)
             if r: cols_prev[1].image(r, width=70)
 
