@@ -15,107 +15,102 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 LOG_FILE = os.path.join(BASE_DIR, 'bitacora_dispensacion.csv')
 
-st.set_page_config(page_title="Sistema de Dispensación Inclusiva", page_icon="💊", layout="wide")
+# Configuración de página limpia
+st.set_page_config(
+    page_title="Sistema de Dispensación",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 # ==========================================
-#      ESTILOS CSS Y ANIMACIONES (NUEVO)
+#      DISEÑO UI PROFESIONAL (CSS PURO)
 # ==========================================
 st.markdown("""
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
-
-    /* Fondo general y tipografía */
-    .stApp {
-        background-color: #f4f8fb;
-        font-family: 'Poppins', sans-serif;
+    /* Tipografía clínica y limpia */
+    html, body, [class*="css"] {
+        font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     }
 
-    /* Animación de entrada suave */
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(20px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
-    
-    .main-container {
-        animation: fadeIn 0.8s ease-out;
-    }
-
-    /* Títulos */
+    /* Títulos sobrios */
     h1 {
-        color: #2c3e50;
-        font-weight: 600;
-        text-align: center;
-        padding-bottom: 10px;
+        font-weight: 700 !important;
+        font-size: 2rem !important;
+        margin-bottom: 0.5rem !important;
     }
     
     h3 {
-        color: #34495e;
-        border-bottom: 2px solid #3498db;
-        padding-bottom: 5px;
-        margin-top: 20px;
+        font-weight: 600 !important;
+        font-size: 1.1rem !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 1.5rem !important;
+        border-bottom: 1px solid var(--secondary-background-color);
+        padding-bottom: 0.5rem;
     }
 
-    /* Estilo de Tarjetas (Contenedores) */
-    div[data-testid="stVerticalBlockBorderWrapper"] {
-        background-color: white;
-        border-radius: 15px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        border: 1px solid #e1e8ed;
-        padding: 20px;
-        transition: transform 0.2s;
-    }
-    
-    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
-        border-color: #3498db;
-    }
-
-    /* Inputs y Selects */
+    /* Contenedores Inputs - Adaptables a Dark Mode */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-        border-radius: 8px;
-        border: 1px solid #ced4da;
+        border-radius: 4px !important;
+        border: 1px solid var(--secondary-background-color) !important;
+        padding: 0.5rem !important;
     }
 
-    /* Botón Principal */
+    /* Botón Principal - Estilo Call to Action */
     div.stButton > button {
-        background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
+        width: 100%;
+        background-color: #0056b3; /* Azul Clínico */
         color: white;
         border: none;
-        padding: 12px 24px;
-        border-radius: 10px;
-        font-size: 16px;
+        padding: 0.75rem 1rem;
+        border-radius: 6px;
         font-weight: 600;
-        box-shadow: 0 4px 6px rgba(52, 152, 219, 0.3);
-        transition: all 0.3s ease;
-        width: 100%;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        transition: background-color 0.2s;
     }
 
     div.stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 12px rgba(52, 152, 219, 0.4);
-        background: linear-gradient(90deg, #2980b9 0%, #3498db 100%);
-    }
-
-    /* Alertas y tags */
-    .stMultiSelect span {
-        background-color: #e8f4f8;
-        color: #2980b9;
-        border-radius: 15px;
+        background-color: #004494;
+        border-color: #004494;
+        color: white;
     }
     
-    /* Footer discreto */
-    .footer-legal {
-        font-size: 0.8rem;
-        color: #95a5a6;
-        text-align: center;
-        margin-top: 30px;
-        border-top: 1px solid #eee;
-        padding-top: 10px;
+    div.stButton > button:active {
+        background-color: #003377;
+        color: white;
     }
+
+    /* Ajuste de Checkboxes y Toggles */
+    label[data-baseweb="checkbox"], label[data-baseweb="radio"] {
+        font-weight: 500;
+    }
+
+    /* Alertas y Mensajes - Sin bordes redondeados excesivos */
+    .stAlert {
+        border-radius: 4px !important;
+    }
+    
+    /* Footer */
+    .footer-text {
+        font-size: 0.75rem;
+        color: var(--text-color);
+        opacity: 0.6;
+        text-align: center;
+        margin-top: 3rem;
+        border-top: 1px solid var(--secondary-background-color);
+        padding-top: 1rem;
+    }
+    
+    /* Eliminar decoración predeterminada de Streamlit */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
 </style>
 """, unsafe_allow_html=True)
 
 if not os.path.exists(ASSETS_DIR):
-    st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
+    st.error(f"Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
 
 # --- 2. LOG DE AUDITORÍA ---
 def registrar_auditoria(profesional, paciente, medicamento, dosis):
@@ -128,12 +123,12 @@ def registrar_auditoria(profesional, paciente, medicamento, dosis):
             ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
             writer.writerow([ahora, profesional, paciente, medicamento, dosis, "GENERADO"])
     except Exception as e:
-        st.error(f"⚠️ Error al guardar bitácora: {e}")
+        st.error(f"Error al guardar bitácora: {e}")
 
 # --- 3. GENERADOR QR DE AUDIO ---
 def generar_qr_audio(texto_a_leer):
     if len(texto_a_leer) > 250:
-        st.warning("⚠️ ADVERTENCIA: Texto truncado por seguridad del QR.")
+        st.warning("Texto truncado por seguridad del QR.")
     texto_seguro = texto_a_leer[:250] 
     base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
@@ -387,114 +382,98 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     return bytes(pdf.output(dest='S'))
 
 # ==========================================
-# --- 7. INTERFAZ UI (REDISEÑADA) ---
+# --- 7. INTERFAZ UI (FORMATO CLÍNICO) ---
 # ==========================================
 
-# Contenedor principal con animación de entrada
-main_cont = st.container()
-with main_cont:
-    st.markdown('<div class="main-container">', unsafe_allow_html=True)
-    
-    # Encabezado Centrado
-    col_h1, col_h2, col_h3 = st.columns([1,2,1])
-    with col_h2:
-        st.title("🖨️ Dispensación Inclusiva")
-        st.markdown("<div style='text-align: center; color: #7f8c8d; margin-top: -15px;'>Colombia • Accesibilidad • Seguridad</div>", unsafe_allow_html=True)
-    
-    st.markdown("---")
+st.markdown("# Sistema de Dispensación Inclusiva")
+st.markdown("**Versión:** 11.2 | **Región:** Colombia")
 
-    # --- BLOQUE 1: DATOS ADMINISTRATIVOS Y CLÍNICOS ---
-    c1, c2 = st.columns([1, 2], gap="large")
-    
-    with c1:
-        st.markdown("### 🏥 Admisión")
-        with st.container(border=True):
-            profesional_resp = st.text_input("👨‍⚕️ Profesional Responsable", placeholder="Dr/a. Nombre Apellido")
-            nom = st.text_input("👤 Nombre Paciente", value="Juan Perez")
-            
-        st.markdown("### ⚙️ Accesibilidad")
-        with st.container(border=True):
-            bra = st.toggle("📝 Hoja Braille", value=True)
-            espejo = st.toggle("🔄 Modo Espejo (Punzar)", value=True, help="Invierte el Braille para punzar manualmente.")
-            qr_act = st.toggle("🔊 Incluir QR Audio", value=True, help="Genera código para lectura en voz alta.")
+# --- SECCIÓN: ADMISIÓN Y PACIENTE ---
+st.markdown("### Información Administrativa")
+col_adm1, col_adm2 = st.columns(2)
+with col_adm1:
+    profesional_resp = st.text_input("Profesional Responsable", placeholder="Dr. / Q.F. Nombre Apellido")
+with col_adm2:
+    nom = st.text_input("Nombre del Paciente", value="Juan Perez")
 
-    with c2:
-        st.markdown("### 💊 Prescripción")
-        with st.container(border=True):
-            col_med1, col_med2 = st.columns(2)
-            med = col_med1.text_input("Medicamento", value="AMOXICILINA")
-            col_med1.caption("Verifique ortografía exacta.")
-            
-            dos = col_med2.text_input("Dosis / Concentración", value="500 mg")
-            col_med2.caption("Ej: 500mg, 1 Tableta.")
-            
-            st.divider()
-            
-            # Selectores visuales
-            col_sel1, col_sel2 = st.columns(2)
-            v = col_sel1.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
-            f = col_sel2.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
-            
-            # Previsualización pequeña de iconos
-            cp = st.columns(6)
-            im1 = get_img(MAPA_VIA.get(v))
-            if im1: cp[0].image(im1, width=50)
-            im2 = get_img(MAPA_FRECUENCIA.get(f))
-            if im2: cp[1].image(im2, width=50)
+# --- SECCIÓN: PRESCRIPCIÓN ---
+st.markdown("### Detalles de la Prescripción")
 
-    # --- BLOQUE 2: SEGURIDAD Y ALERTAS ---
-    st.markdown("### ⚠️ Precauciones y Alertas")
-    with st.container(border=True):
-        a = st.multiselect("Seleccione las etiquetas de precaución aplicables:", list(MAPA_ALERTAS.keys()))
-        
-        # Galería dinámica de iconos seleccionados
-        if a:
-            st.markdown("**Previsualización:**")
-            cols = st.columns(8)
-            for i, al in enumerate(a):
-                im3 = get_img(MAPA_ALERTAS.get(al))
-                if im3: cols[i%8].image(im3, width=40, caption=al[:10]+"..")
+# Fila 1: Medicamento y Dosis
+col_med1, col_med2 = st.columns([2, 1])
+with col_med1:
+    med = st.text_input("Medicamento (Nombre Genérico)", value="AMOXICILINA")
+with col_med2:
+    dos = st.text_input("Dosis / Concentración", value="500 mg")
 
-    # --- BLOQUE 3: LEGAL Y ACCIÓN ---
-    st.markdown("---")
-    
-    col_leg1, col_leg2 = st.columns([3, 1])
-    with col_leg1:
-        st.info("🔒 **Habeas Data (Ley 1581/2012):** Los datos procesados aquí son temporales y se usan estrictamente para la generación de la guía accesible.")
-        aceptar_terminos = st.checkbox("✅ Certifico la veracidad de los datos y acepto el tratamiento para la generación del documento.")
+# Fila 2: Vía y Frecuencia con previsualización mínima
+col_via, col_frec = st.columns(2)
+with col_via:
+    v = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
+    # Previsualización condicional del icono (pequeño)
+    icon_via = get_img(MAPA_VIA.get(v))
+    if icon_via:
+        st.image(icon_via, width=40)
 
-    with col_leg2:
-        st.write("") # Espaciador
-        st.write("")
-        btn_generar = st.button("GENERAR GUÍA PDF ✨", type="primary")
+with col_frec:
+    f = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
+    icon_frec = get_img(MAPA_FRECUENCIA.get(f))
+    if icon_frec:
+        st.image(icon_frec, width=40)
 
-    # LÓGICA DE BOTÓN
-    if btn_generar:
+# --- SECCIÓN: SEGURIDAD ---
+st.markdown("### Alertas Farmacéuticas")
+a = st.multiselect("Seleccione precauciones especiales", list(MAPA_ALERTAS.keys()))
+
+if a:
+    st.caption("Iconografía seleccionada:")
+    cols_prev = st.columns(8)
+    for idx, alerta in enumerate(a):
+        img_a = get_img(MAPA_ALERTAS.get(alerta))
+        if img_a:
+            cols_prev[idx % 8].image(img_a, width=35)
+
+# --- SECCIÓN: ACCESIBILIDAD Y GENERACIÓN ---
+st.markdown("### Configuración de Accesibilidad")
+c_acc1, c_acc2, c_acc3 = st.columns(3)
+with c_acc1:
+    bra = st.toggle("Generar Guía Braille", value=True)
+with c_acc2:
+    espejo = st.toggle("Modo Espejo (Punzado Manual)", value=True)
+with c_acc3:
+    qr_act = st.toggle("Generar QR de Audio", value=True)
+
+st.markdown("---")
+
+# Aviso Legal y Botón
+col_final1, col_final2 = st.columns([2, 1])
+with col_final1:
+    st.caption("Aviso Legal (Ley 1581/2012): Los datos ingresados se utilizan exclusivamente para la generación instantánea del documento accesible y su registro en bitácora local.")
+    aceptar_terminos = st.checkbox("Certifico la veracidad de los datos clínicos.")
+
+with col_final2:
+    if st.button("GENERAR DOCUMENTO PDF"):
         if not profesional_resp:
-            st.toast("⚠️ Falta el nombre del profesional.", icon="👨‍⚕️")
+            st.error("Requerido: Nombre del Profesional")
         elif not aceptar_terminos:
-            st.toast("⛔ Debe aceptar los términos legales.", icon="⚖️")
+            st.error("Requerido: Aceptar términos")
         else:
-            with st.spinner("🔄 Procesando Braille, Audio y Gráficos..."):
-                try:
+            try:
+                # Feedback de proceso
+                with st.spinner("Procesando documento..."):
                     pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
                     registrar_auditoria(profesional_resp, nom, med, dos)
-                    time.sleep(1) # Pequeña pausa para efecto visual
-                    
-                    st.toast("✅ ¡Documento generado con éxito!", icon="🎉")
-                    st.balloons()
-                    
-                    file_id = int(time.time())
-                    st.download_button(
-                        label="📥 DESCARGAR DOCUMENTO PDF",
-                        data=pdf_bytes,
-                        file_name=f"Guia_{med}_{file_id}.pdf",
-                        mime="application/pdf",
-                        type="secondary",
-                        use_container_width=True
-                    )
-                except Exception as e:
-                    st.error(f"Error técnico: {e}")
+                
+                st.success("Documento Generado Exitosamente")
+                
+                file_id = int(time.time())
+                st.download_button(
+                    label="DESCARGAR PDF",
+                    data=pdf_bytes,
+                    file_name=f"Guia_{med}_{file_id}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"Error técnico: {e}")
 
-    st.markdown('<div class="footer-legal">Desarrollado para cumplimiento de normativa de accesibilidad farmacéutica en Colombia. v11.2</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="footer-text">Sistema de Dispensación Inclusiva - Cumplimiento Normativo Colombia</div>', unsafe_allow_html=True)
