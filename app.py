@@ -17,7 +17,7 @@ LOG_FILE = os.path.join(BASE_DIR, 'bitacora_dispensacion.csv') # NUEVO: Archivo 
 
 st.set_page_config(page_title="Sistema de Dispensación Inclusiva", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva - Colombia")
-st.markdown("**Versión 11.2 (Auditada):** Cumplimiento Ley 1581 y Tecnovigilancia.")
+st.markdown("**Versión 11.2:** Cumplimiento Ley 1581 y Tecnovigilancia.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
