@@ -284,23 +284,22 @@ def generar_pdf(paciente, farmaceutico, med, dosis, via, frec, alertas, hacer_br
     return bytes(pdf.output(dest='S'))
 
 # --- 6. INTERFAZ UI ---
-c1, c2 = st.columns([1, 3])
-with c1:
-    st.image("https://cdn-icons-png.flaticon.com/512/3063/3063823.png", width=100)
+c2 = st.columns([1, 3])
+
 with c2: 
-    st.subheader("Módulo de Farmacia - Dispensación")
+    st.subheader("Módulo de registro")
 
 with st.container(border=True):
     col_auth, col_data = st.columns([1, 3])
-    farmaceutico = col_auth.text_input("Farmacéutico Responsable", "Lic. Turno Mañana")
+    farmaceutico = col_auth.text_input("Responsable", "Nombre del responsable")
     
-    nom = col_data.text_input("Nombre Paciente", "Juan Perez")
+    nom = col_data.text_input("Nombre Paciente", "inserte el nombre del paciente")
     
     # 3. INPUT ABIERTO CON ADVERTENCIA (Requerimiento)
     c_med, c_dos = col_data.columns(2)
     
     # Text input libre
-    med = c_med.text_input("Medicamento (Nombre Genérico)", "AMOXICILINA")
+    med = c_med.text_input("Medicamento (Nombre Genérico)", "inserte el nombre del medicamento")
     if med:
         c_med.caption("⚠ Verifique ortografía contra receta.")
         
