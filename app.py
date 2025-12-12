@@ -32,20 +32,17 @@ BRAILLE_CHARS = {
     '(': [2,3,5,6], ')': [2,3,5,6], '/': [3,4], '-': [3,6]
 }
 
-# --- 4. MOTOR BRAILLE (AJUSTADO PARA HOJA INDEPENDIENTE) ---
+# --- 4. MOTOR BRAILLE ---
 def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
     """
     Dibuja los puntos Braille en el PDF invirtiendo columnas para efecto espejo.
-    Maneja saltos de línea automáticos.
     """
-    # 1. Normalizar texto
     texto = ''.join(c for c in unicodedata.normalize('NFD', texto_completo) if unicodedata.category(c) != 'Mn').upper()
     
     current_x = x_inicial
     current_y = y_inicial
     
-    # 2. Configuración de la celda Braille (REDUCIDA LIGERAMENTE)
-    scale = 1.2           # Reducido de 1.5 a 1.2 para que quepa mejor
+    scale = 1.2
     dot_radius = 0.5 * scale
     w_dot = 2.5 * scale   
     h_dot = 2.5 * scale   
@@ -53,11 +50,9 @@ def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
     h_line = 12.0 * scale 
     margin_right = 190    
     
-    # Mapeo de Espejo (Mirroring)
     mirror_map = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
 
     for char in texto:
-        # Salto de línea si se sale del margen derecho
         if current_x + w_char > margin_right:
             current_x = x_inicial 
             current_y += h_line   
@@ -65,8 +60,7 @@ def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
         puntos = BRAILLE_CHARS.get(char, [])
         puntos_espejo = [mirror_map[p] for p in puntos]
         
-        # Fondo gris suave (Guía visual)
-        pdf.set_fill_color(245, 245, 245)
+        pdf.set_fill_color(245, 245, 245) # Gris guía
         positions = {
             1: (current_x, current_y),
             2: (current_x, current_y + h_dot),
@@ -76,18 +70,22 @@ def dibujar_braille_multilinea(pdf, texto_completo, x_inicial, y_inicial):
             6: (current_x + w_dot, current_y + h_dot * 2),
         }
         
-        # Dibujar puntos activos (Negro)
-        pdf.set_fill_color(0, 0, 0)
+        pdf.set_fill_color(0, 0, 0) # Negro
         for p_num in puntos_espejo:
             pos = positions[p_num]
             pdf.circle(pos[0], pos[1], dot_radius, 'F')
             
         current_x += w_char
 
-# --- 5. FUNCIONES AUXILIARES ---
+# --- 5. FUNCIONES AUXILIARES (CORREGIDA) ---
 def ruta_imagen_segura(nombre_objetivo):
+    # PROTECCIÓN CONTRA NONE (Esta línea arregla el error)
+    if not nombre_objetivo: 
+        return None
+        
     ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
     if os.path.exists(ruta_exacta): return ruta_exacta
+    
     for archivo_real in os.listdir(ASSETS_DIR):
         if archivo_real.lower() == nombre_objetivo.lower():
             return os.path.join(ASSETS_DIR, archivo_real)
@@ -133,7 +131,7 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
     pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()} | DOSIS: {dosis.upper()}", ln=True, align='C')
     pdf.line(10, 35, 200, 35)
     
-    # Pictogramas (Texto Arriba)
+    # Pictogramas
     y_bloque_1 = 50 
     
     # Vía
@@ -189,30 +187,31 @@ def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_ale
 
     # === PÁGINA 2: BRAILLE (Hoja Independiente) ===
     if es_ciego:
-        pdf.add_page() # <--- PÁGINA NUEVA
+        pdf.add_page()
         
-        # Encabezado Braille Visual
+        # Encabezado Braille
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, txt="GUÍA TÁCTIL (BRAILLE ESPEJO)", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
-        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Esta página contiene el patrón de puntos invertido. Coloque la hoja sobre una superficie blanda y presione los puntos negros con un punzón. El relieve será legible por el reverso.", align='C')
+        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Esta página contiene el patrón de puntos invertido. Coloque la hoja sobre una superficie blanda y presione los puntos negros con un punzón.", align='C')
         pdf.ln(10)
         
-        # 1. Construir texto completo
+        # Construir texto completo
         alertas_str = ", ".join(lista_alertas) if lista_alertas else "NINGUNA"
+        # Manejo seguro de frecuencia (si es None, poner texto vacío)
+        frec_texto = frecuencia_key if frecuencia_key else "NO INDICADO"
+        
         texto_completo = (
             f"PAC:{paciente}. MED:{medicamento} {dosis}. "
-            f"VIA:{via_key}. TOMA:{frecuencia_key}. "
+            f"VIA:{via_key}. TOMA:{frec_texto}. "
             f"PRE:{alertas_str}."
         )
         
-        # 2. Dibujar Braille (Desde arriba de la Pág 2)
+        # Dibujar Braille
         braille_x = 10
-        braille_y = 40 # Margen superior en Pág 2
-        
+        braille_y = 40
         dibujar_braille_multilinea(pdf, texto_completo, braille_x, braille_y)
         
-        # Pie de página Pág 2
         pdf.set_y(-15)
         pdf.set_font("Arial", "I", 8)
         pdf.cell(0, 10, txt="Sistema SMEFI - Módulo de Accesibilidad Táctil", align='C')
@@ -237,12 +236,17 @@ with c3:
     frec_sel = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
     
     cols_prev = st.columns(2)
+    # Previsualización segura
     if via_sel:
         r = ruta_imagen_segura(MAPA_VIA[via_sel])
         if r: cols_prev[0].image(r, width=70)
+    
+    # Aquí estaba el error anterior:
     if frec_sel:
-        r = ruta_imagen_segura(MAPA_FRECUENCIA.get(frec_sel))
-        if r: cols_prev[1].image(r, width=70)
+        nombre_archivo = MAPA_FRECUENCIA.get(frec_sel) # Obtiene el nombre o None
+        if nombre_archivo: # Solo si no es None buscamos la ruta
+            r = ruta_imagen_segura(nombre_archivo)
+            if r: cols_prev[1].image(r, width=70)
 
 with c4:
     st.warning("⚠️ Seguridad")
