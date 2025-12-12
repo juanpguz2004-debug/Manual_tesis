@@ -5,7 +5,9 @@ import unicodedata
 import time
 import qrcode
 import urllib.parse
-from datetime import datetime, timedelta  # NUEVO: Necesario para trazabilidad
+from datetime import datetime, timedelta
+import io  # NUEVO: Para manejo en memoria
+import tempfile  # NUEVO: Para archivos temporales seguros
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -13,22 +15,23 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="Sistema de Dispensación Inclusiva", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva")
-st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas.")
+st.markdown("**Versión 11.1 (Segura):** Audio QR en RAM y validación de privacidad.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
 
-# --- 2. GENERADOR QR DE AUDIO ---
+# --- 2. GENERADOR QR DE AUDIO (OPTIMIZADO NIVEL 1) ---
 def generar_qr_audio(texto_a_leer):
     """
-    Genera un QR con enlace directo al TTS de Google.
-    Ajustado para permitir Alertas sin romper la URL (Límite ~250 chars).
+    Genera un QR en memoria RAM.
+    Avisa si el texto excede la capacidad segura de la URL.
     """
-    # Límite ampliado a 250 para que quepan las alertas.
-    # Si se pasa, corta el final para que el QR siempre funcione.
+    # Validación de Seguridad: Aviso de corte de texto
+    if len(texto_a_leer) > 250:
+        st.warning("⚠️ ADVERTENCIA DE SEGURIDAD: El texto de audio es muy largo (>250 caracteres) y ha sido truncado. Verifique que las indicaciones críticas se escuchen en el QR.")
+    
     texto_seguro = texto_a_leer[:250] 
     
-    # Endpoint gtx (más robusto)
     base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
     
@@ -37,9 +40,11 @@ def generar_qr_audio(texto_a_leer):
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     
-    qr_path = os.path.join(BASE_DIR, "temp_audio_qr.png")
-    img.save(qr_path)
-    return qr_path
+    # NUEVO: Manejo en RAM (io.BytesIO) para no escribir en disco duro
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    return buffer
 
 # --- 3. BRAILLELIB (Motor Profesional) ---
 class BrailleLib:
@@ -52,9 +57,8 @@ class BrailleLib:
         'á': 0x37, 'é': 0x2E, 'í': 0x0C, 'ó': 0x2C, 'ú': 0x3E, 'ü': 0x33, 'ñ': 0x3B,
         '1': 0x01, '2': 0x03, '3': 0x09, '4': 0x19, '5': 0x11,
         '6': 0x0B, '7': 0x1B, '8': 0x13, '9': 0x0A, '0': 0x1A,
-        ',': 0x02, ';': 0x06, ':': 0x12, '.': 0x32, '!': 0x16, 
         '(': 0x36, ')': 0x36, '?': 0x22, '-': 0x24, '/': 0x0C, 
-        ' ': 0x00 
+        ',': 0x02, ';': 0x06, ':': 0x12, '.': 0x32, '!': 0x16, ' ': 0x00 
     }
     SIGNO_NUMERO = 0x3C
     
@@ -177,7 +181,6 @@ MAPA_ALERTAS = {
 }
 
 # --- 5. GENERADOR PDF ---
-# Actualizado para recibir 'profesional'
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr, profesional):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
@@ -185,7 +188,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     # --- PÁGINA 1: VISUAL ---
     pdf.add_page()
     
-    # NUEVO: Trazabilidad en Encabezado
     ahora_col = datetime.utcnow() - timedelta(hours=5)
     ahora = ahora_col.strftime("%d/%m/%Y %H:%M")
     pdf.set_font("Arial", "", 8)
@@ -196,19 +198,17 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.set_font("Arial", "B", 24)
     pdf.cell(0, 15, txt=f"{str(med).upper()}", ln=True, align='C')
     
-    # NUEVO: Alerta Visual Roja
     pdf.set_font("Arial", "B", 10)
-    pdf.set_text_color(220, 0, 0) # Rojo Alerta
+    pdf.set_text_color(220, 0, 0)
     pdf.cell(0, 5, txt="VERIFICAR DOSIS Y MEDICAMENTO ANTES DE ENTREGAR", ln=True, align='C')
-    pdf.set_text_color(0, 0, 0) # Reset color
+    pdf.set_text_color(0, 0, 0)
     
     pdf.ln(2)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, txt=f"PACIENTE: {str(paciente).upper()} | DOSIS: {str(dosis).upper()}", ln=True, align='C')
-    pdf.line(10, 45, 200, 45) # Bajado un poco para dar espacio a la alerta
+    pdf.line(10, 45, 200, 45)
     
-    # Bloques visuales
-    y_bloque = 60 # Ajustado por nuevo encabezado
+    y_bloque = 60
     pdf.set_xy(20, y_bloque)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
     img_via = get_img(MAPA_VIA.get(via))
@@ -228,7 +228,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.multi_cell(60, 4, txt=str(frec).upper(), align='C')
         pdf.image(img_frec, x=125, y=pdf.get_y()+2, w=30)
 
-    # Alertas
     y_al = 130
     pdf.set_xy(10, y_al)
     pdf.set_font("Arial", "B", 12)
@@ -245,25 +244,35 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
             cx += 45
             col += 1
 
-    # --- INSERCIÓN DE QR AUDIO ---
+    # --- INSERCIÓN DE QR AUDIO (MODIFICADO SEGURO) ---
     if hacer_qr:
-        # NUEVO: QR ANONIMIZADO (Protección de Datos)
-        # No incluye nombre del paciente, solo "Hola" o "Sus indicaciones".
         al_str = ", ".join(alertas) if alertas else "Ninguna"
-        # Frase genérica para cumplir con la ley
         texto_audio = f"Hola. Sus indicaciones: {med}. Frecuencia: {frec}. Vía {via}. Alertas: {al_str}."
         
-        qr_file = generar_qr_audio(texto_audio)
+        # Obtenemos el buffer de memoria (RAM), no un archivo
+        qr_buffer = generar_qr_audio(texto_audio)
         
         pdf.set_auto_page_break(auto=False)
         pdf.set_xy(150, 240) 
-        pdf.image(qr_file, w=40)
+        
+        # TRUCO SEGURO: FPDF suele requerir un archivo físico. Creamos uno temporal que se borra al salir del bloque 'with'.
+        # Esto evita dejar basura en el servidor (temp_audio_qr.png) y cumple la seguridad.
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
+            tmp_file.write(qr_buffer.getvalue())
+            tmp_path = tmp_file.name
+        
+        try:
+            pdf.image(tmp_path, w=40)
+        finally:
+            # Borrado inmediato del disco
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+
         pdf.set_xy(150, 280)
         pdf.set_font("Arial", "B", 8)
         pdf.cell(40, 5, "ESCANEA PARA OÍR", align='C')
         pdf.set_auto_page_break(auto=True, margin=15)
 
-    # NUEVO: DISCLAIMER MÉDICO (Footer Página 1)
     pdf.set_y(-25)
     pdf.set_font("Arial", "I", 7)
     pdf.set_text_color(100, 100, 100)
@@ -285,7 +294,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.ln(10)
         
         al_str_br = ", ".join(alertas) if alertas else "NINGUNA"
-        # Braille técnico se mantiene igual, es info cruda
         texto_tecnico = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERT:{al_str_br}"
         
         last_y = BrailleLib.render_on_pdf(pdf, texto_tecnico, 10, 45, espejo)
@@ -302,7 +310,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="Sistema braille v11.0", align='C')
+        pdf.cell(0, 5, txt="Sistema braille v11.1", align='C')
 
     return bytes(pdf.output(dest='S'))
 
@@ -311,13 +319,11 @@ c1, c2 = st.columns([1, 3])
 with c2: st.subheader("Datos del Tratamiento")
 
 with st.container(border=True):
-    # NUEVO: Campo profesional para trazabilidad
     profesional_resp = st.text_input("Nombre Profesional Responsable", placeholder="Ej. Dr. Ana Gomez / Farm. Luis Torres")
     
     ca, cb = st.columns(2)
     nom = ca.text_input("Nombre Paciente", value="Juan Perez")
     
-    # NUEVO: Advertencia UI Flexibilidad
     med = ca.text_input("Medicamento", value="AMOXICILINA")
     ca.caption("⚠️ Verifique ortografía exacta del medicamento.")
     
@@ -350,13 +356,19 @@ with c4:
             im3 = get_img(MAPA_ALERTAS.get(al))
             if im3: cols[i%4].image(im3, width=40)
 
+# NUEVO: Aviso de Privacidad (Nivel 2)
+st.markdown("---")
+st.caption("🔒 **Aviso de Privacidad:**")
+aceptar_terminos = st.checkbox("Entiendo que esta herramienta utiliza servicios de terceros (Google TTS) para generar el audio del QR y que no se deben incluir diagnósticos sensibles en el texto.")
+
 st.write("")
 if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
     if not profesional_resp:
         st.error("⚠️ Debe indicar el nombre del profesional responsable.")
+    elif not aceptar_terminos:
+        st.error("⛔ Debe aceptar el aviso de privacidad para continuar.")
     else:
         try:
-            # Se pasa el nuevo parámetro profesional_resp
             pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
             st.success("✅ ¡Documento generado correctamente!")
             
