@@ -236,7 +236,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         
     pdf.set_xy(110, y_bloque)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(60, 10, txt="HORARIO", align='C', ln=1)
+    pdf.cell(60, 10, txt="FRECUENCIA/INGESTION", align='C', ln=1)
     img_frec = get_img(MAPA_FRECUENCIA.get(frec))
     if img_frec:
         pdf.set_xy(110, y_bloque+10)
@@ -290,7 +290,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.set_font("Arial", "I", 7)
     pdf.set_text_color(100, 100, 100)
     # NUEVO: Disclaimer Ajustado a Ley Colombiana
-    disclaimer = "AVISO LEGAL: Herramienta de apoyo conforme a Ley 1581/2012 (Habeas Data). No sustituye prescripción médica. Reportar eventos adversos al INVIMA."
+    disclaimer = "AVISO LEGAL: Herramienta de apoyo conforme a Ley 1581/2012 (Habeas Data).No sustituye prescripción médica."
     pdf.multi_cell(0, 3, disclaimer, align='L')
     pdf.set_text_color(0, 0, 0)
 
