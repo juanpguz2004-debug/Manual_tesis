@@ -5,7 +5,7 @@ import unicodedata
 import time
 import qrcode
 import urllib.parse
-from datetime import datetime  # NUEVO: Necesario para trazabilidad
+from datetime import datetime, timedelta  # NUEVO: Necesario para trazabilidad
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -186,7 +186,8 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.add_page()
     
     # NUEVO: Trazabilidad en Encabezado
-    ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    ahora_col = datetime.utcnow() - timedelta(hours=5)
+    ahora = ahora_col.strftime("%d/%m/%Y %H:%M")
     pdf.set_font("Arial", "", 8)
     pdf.set_text_color(100, 100, 100)
     pdf.cell(0, 5, txt=f"Emitido: {ahora} | Profesional Resp: {str(profesional).upper()}", ln=True, align='R')
@@ -266,7 +267,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.set_y(-25)
     pdf.set_font("Arial", "I", 7)
     pdf.set_text_color(100, 100, 100)
-    disclaimer = "AVISO LEGAL: Esta herramienta es un apoyo informativo y no sustituye el consejo médico profesional. Verifique siempre la medicación antes de su uso."
+    disclaimer = "AVISO LEGAL: Esta herramienta es un apoyo informativo y no sustituye el consejo médico profesional."
     pdf.multi_cell(0, 3, disclaimer, align='C')
     pdf.set_text_color(0, 0, 0)
 
