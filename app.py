@@ -10,7 +10,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 9.0 (Perfect Mirror):** BrailleLib + Corrección Geométrica de Texto.")
+st.markdown("**Versión 9.1 (Final Release):** BrailleLib Espejo Geométrico + Alertas Incluidas.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
@@ -257,7 +257,10 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo)
         pdf.ln(10)
         
         # Texto Braille
-        texto_plano = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec}"
+        # 1. Crear string de alertas
+        al_str = ", ".join(alertas) if alertas else "NINGUNA"
+        # 2. Agregar alertas al texto final
+        texto_plano = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERTAS:{al_str}"
         
         # Renderizado (Devuelve Y final)
         last_y = BrailleLib.render_on_pdf(pdf, texto_plano, 10, 45, espejo)
@@ -275,7 +278,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo)
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="SMEFI System v9.0", align='C')
+        pdf.cell(0, 5, txt="SMEFI System v9.1", align='C')
 
     return bytes(pdf.output(dest='S'))
 
