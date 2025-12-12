@@ -11,9 +11,9 @@ from datetime import datetime, timedelta  # NUEVO: Necesario para trazabilidad
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
-st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
-st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas + Seguridad Reforzada.")
+st.set_page_config(page_title="Sistema de Dispensación Inclusiva", page_icon="💊", layout="wide")
+st.title("🖨️ Sistema de Dispensación Inclusiva")
+st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
@@ -251,7 +251,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         # No incluye nombre del paciente, solo "Hola" o "Sus indicaciones".
         al_str = ", ".join(alertas) if alertas else "Ninguna"
         # Frase genérica para cumplir con la ley
-        texto_audio = f"Hola. Sus indicaciones: {med}. Dosis {dosis}. Vía {via}. Alertas: {al_str}."
+        texto_audio = f"Hola. Sus indicaciones: {med}. Frecuencia: {frec}. Vía {via}. Alertas: {al_str}."
         
         qr_file = generar_qr_audio(texto_audio)
         
