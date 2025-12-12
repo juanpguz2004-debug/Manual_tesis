@@ -5,6 +5,7 @@ import unicodedata
 import time
 import qrcode
 import urllib.parse
+from datetime import datetime  # NUEVO: Necesario para trazabilidad
 
 # --- 1. CONFIGURACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,7 +13,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas.")
+st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas + Seguridad Reforzada.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
@@ -176,20 +177,37 @@ MAPA_ALERTAS = {
 }
 
 # --- 5. GENERADOR PDF ---
-def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr):
+# Actualizado para recibir 'profesional'
+def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr, profesional):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     
     # --- PÁGINA 1: VISUAL ---
     pdf.add_page()
+    
+    # NUEVO: Trazabilidad en Encabezado
+    ahora = datetime.now().strftime("%d/%m/%Y %H:%M")
+    pdf.set_font("Arial", "", 8)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 5, txt=f"Emitido: {ahora} | Profesional Resp: {str(profesional).upper()}", ln=True, align='R')
+    pdf.set_text_color(0, 0, 0)
+    
     pdf.set_font("Arial", "B", 24)
     pdf.cell(0, 15, txt=f"{str(med).upper()}", ln=True, align='C')
+    
+    # NUEVO: Alerta Visual Roja
+    pdf.set_font("Arial", "B", 10)
+    pdf.set_text_color(220, 0, 0) # Rojo Alerta
+    pdf.cell(0, 5, txt="⚠️ VERIFICAR DOSIS Y MEDICAMENTO ANTES DE ENTREGAR", ln=True, align='C')
+    pdf.set_text_color(0, 0, 0) # Reset color
+    
+    pdf.ln(2)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, txt=f"PACIENTE: {str(paciente).upper()} | DOSIS: {str(dosis).upper()}", ln=True, align='C')
-    pdf.line(10, 35, 200, 35)
+    pdf.line(10, 45, 200, 45) # Bajado un poco para dar espacio a la alerta
     
     # Bloques visuales
-    y_bloque = 50
+    y_bloque = 60 # Ajustado por nuevo encabezado
     pdf.set_xy(20, y_bloque)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
     img_via = get_img(MAPA_VIA.get(via))
@@ -210,7 +228,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.image(img_frec, x=125, y=pdf.get_y()+2, w=30)
 
     # Alertas
-    y_al = 120
+    y_al = 130
     pdf.set_xy(10, y_al)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES:", ln=1)
@@ -228,10 +246,11 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
 
     # --- INSERCIÓN DE QR AUDIO ---
     if hacer_qr:
-        # Texto Audio Optimizado
+        # NUEVO: QR ANONIMIZADO (Protección de Datos)
+        # No incluye nombre del paciente, solo "Hola" o "Sus indicaciones".
         al_str = ", ".join(alertas) if alertas else "Ninguna"
-        # Frase corta para evitar Error 400
-        texto_audio = f"Paciente {paciente}. {med}. {dosis}. Vía {via}. Alertas: {al_str}."
+        # Frase genérica para cumplir con la ley
+        texto_audio = f"Hola. Sus indicaciones: {med}. Dosis {dosis}. Vía {via}. Alertas: {al_str}."
         
         qr_file = generar_qr_audio(texto_audio)
         
@@ -242,6 +261,14 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.set_font("Arial", "B", 8)
         pdf.cell(40, 5, "ESCANEA PARA OÍR", align='C')
         pdf.set_auto_page_break(auto=True, margin=15)
+
+    # NUEVO: DISCLAIMER MÉDICO (Footer Página 1)
+    pdf.set_y(-25)
+    pdf.set_font("Arial", "I", 7)
+    pdf.set_text_color(100, 100, 100)
+    disclaimer = "AVISO LEGAL: Esta herramienta es un apoyo informativo y no sustituye el consejo médico profesional. Verifique siempre la medicación antes de su uso."
+    pdf.multi_cell(0, 3, disclaimer, align='C')
+    pdf.set_text_color(0, 0, 0)
 
     # --- PÁGINA 2: BRAILLE ---
     if hacer_braille:
@@ -257,6 +284,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.ln(10)
         
         al_str_br = ", ".join(alertas) if alertas else "NINGUNA"
+        # Braille técnico se mantiene igual, es info cruda
         texto_tecnico = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERT:{al_str_br}"
         
         last_y = BrailleLib.render_on_pdf(pdf, texto_tecnico, 10, 45, espejo)
@@ -282,9 +310,16 @@ c1, c2 = st.columns([1, 3])
 with c2: st.subheader("Datos del Tratamiento")
 
 with st.container(border=True):
+    # NUEVO: Campo profesional para trazabilidad
+    profesional_resp = st.text_input("Nombre Profesional Responsable", placeholder="Ej. Dr. Ana Gomez / Farm. Luis Torres")
+    
     ca, cb = st.columns(2)
     nom = ca.text_input("Nombre Paciente", value="Juan Perez")
+    
+    # NUEVO: Advertencia UI Flexibilidad
     med = ca.text_input("Medicamento", value="AMOXICILINA")
+    ca.caption("⚠️ Verifique ortografía exacta del medicamento.")
+    
     dos = cb.text_input("Dosis", value="500 mg")
     
     st.markdown("---")
@@ -316,16 +351,20 @@ with c4:
 
 st.write("")
 if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
-    try:
-        pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act)
-        st.success("✅ ¡Documento generado correctamente!")
-        
-        file_id = int(time.time())
-        st.download_button(
-            label="📥 DESCARGAR PDF",
-            data=pdf_bytes,
-            file_name=f"Guia_{med}_{file_id}.pdf",
-            mime="application/pdf"
-        )
-    except Exception as e:
-        st.error(f"Error técnico: {e}")
+    if not profesional_resp:
+        st.error("⚠️ Debe indicar el nombre del profesional responsable.")
+    else:
+        try:
+            # Se pasa el nuevo parámetro profesional_resp
+            pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
+            st.success("✅ ¡Documento generado correctamente!")
+            
+            file_id = int(time.time())
+            st.download_button(
+                label="📥 DESCARGAR PDF",
+                data=pdf_bytes,
+                file_name=f"Guia_{med}_{file_id}.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Error técnico: {e}")
