@@ -12,7 +12,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 10.0 (Multimedia):** BrailleLib + QR de Audio Terapéutico.")
+st.markdown("**Versión 10.5 (Stable Audio):** Corrección de márgenes y URL de audio.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
@@ -20,31 +20,28 @@ if not os.path.exists(ASSETS_DIR):
 # --- 2. GENERADOR QR DE AUDIO ---
 def generar_qr_audio(texto_a_leer):
     """
-    Genera un QR que apunta al servicio TTS de Google.
-    Al escanearlo, el celular reproduce el audio del texto.
+    Genera un QR con enlace directo al TTS de Google.
+    CORRECCIÓN: Usa client='gtx' y trunca texto para evitar Error 400.
     """
-    # 1. Preparar texto (Acortar si es muy largo para la URL, máx ~200-300 chars seguros)
-    texto_seguro = texto_a_leer[:300]
+    # Limitar texto a ~150 caracteres para evitar Error 400 (URL demasiado larga)
+    # Priorizamos lo vital: Nombre, Medicamento y Dosis.
+    texto_seguro = texto_a_leer[:180] 
     
-    # 2. Construir URL de Google TTS (Hacky pero efectiva y gratuita)
-    # client=tw-ob es la clave para acceso público
-    base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=es&q="
+    # Endpoint robusto (gtx)
+    base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
     
-    # 3. Crear imagen QR
     qr = qrcode.QRCode(box_size=10, border=2)
     qr.add_data(url_final)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # 4. Guardar temporalmente
     qr_path = os.path.join(BASE_DIR, "temp_audio_qr.png")
     img.save(qr_path)
     return qr_path
 
 # --- 3. BRAILLELIB (Motor Profesional) ---
 class BrailleLib:
-    """ Motor de Traducción Braille Unicode (Español). """
     UNICODE_MAP = {
         'a': 0x01, 'b': 0x03, 'c': 0x09, 'd': 0x19, 'e': 0x11,
         'f': 0x0B, 'g': 0x1B, 'h': 0x13, 'i': 0x0A, 'j': 0x1A,
@@ -81,11 +78,10 @@ class BrailleLib:
     @staticmethod
     def render_on_pdf(pdf, text, x_start, y_start, espejo=True):
         full_braille = BrailleLib.text_to_unicode_braille(text)
-        scale, s_dot, s_char, s_line = 1.2, 3.0, 7.8, 13.2 # Ajustado para legibilidad
-        r = 0.66 # Radio punto
+        scale, s_dot, s_char, s_line = 1.2, 3.0, 7.8, 13.2
+        r = 0.66
         margin_right = 190
         
-        # Word Wrap Manual
         max_chars = int((margin_right - x_start) / s_char)
         words = full_braille.split(chr(0x2800))
         lines = []
@@ -182,6 +178,7 @@ MAPA_ALERTAS = {
 # --- 5. GENERADOR PDF ---
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr):
     pdf = FPDF()
+    # Margen automático para la parte visual, pero lo desactivaremos para el pie de página
     pdf.set_auto_page_break(auto=True, margin=15)
     
     # --- PÁGINA 1: VISUAL ---
@@ -230,18 +227,25 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
             cx += 45
             col += 1
 
-    # --- INSERCIÓN DE QR AUDIO (PÁGINA 1) ---
+    # --- INSERCIÓN DE QR AUDIO ---
     if hacer_qr:
-        # Texto natural para el audio
-        texto_audio = f"Hola {paciente}. Tienes recetado {med}, dosis de {dosis}. Debes usarlo por {via}, con frecuencia {frec}. Precauciones: {', '.join(alertas)}."
+        # Texto conciso para audio (para no romper la URL)
+        texto_audio = f"Paciente {paciente}. Medicina: {med}. Dosis: {dosis}. Vía: {via}."
         qr_file = generar_qr_audio(texto_audio)
         
+        # FIX DE PAGINACIÓN:
+        # Desactivamos el salto automático antes de poner el QR en el pie
+        pdf.set_auto_page_break(auto=False)
+        
         # Posicionar QR abajo a la derecha
-        pdf.set_xy(150, 240) # Coordenadas X, Y
+        pdf.set_xy(150, 240) 
         pdf.image(qr_file, w=40)
         pdf.set_xy(150, 280)
         pdf.set_font("Arial", "B", 8)
         pdf.cell(40, 5, "ESCANEA PARA OÍR", align='C')
+        
+        # Reactivar salto por si acaso (aunque la siguiente página Braille lo maneja manual)
+        pdf.set_auto_page_break(auto=True, margin=15)
 
     # --- PÁGINA 2: BRAILLE ---
     if hacer_braille:
@@ -256,7 +260,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.multi_cell(0, 5, txt=f"INSTRUCCIONES: {instrucc}", align='C')
         pdf.ln(10)
         
-        # Texto Braille técnico
         al_str = ", ".join(alertas) if alertas else "NINGUNA"
         texto_tecnico = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERT:{al_str}"
         
@@ -274,7 +277,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="SMEFI System v10.0", align='C')
+        pdf.cell(0, 5, txt="SMEFI System v10.5", align='C')
 
     return bytes(pdf.output(dest='S'))
 
