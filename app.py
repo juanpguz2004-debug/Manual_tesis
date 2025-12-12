@@ -3,23 +3,20 @@ from fpdf import FPDF
 import os
 import unicodedata
 
-# --- 1. CONFIGURACIÓN DE RUTAS ---
+# --- 1. CONFIGURACIÓN E INICIALIZACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
-# --- 2. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="SMEFI Prototipo", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión Final:** Braille Multipágina (Paginación Automática) + Pictogramas USP.")
+st.markdown("**Versión 4.0 (Final):** Braille Dinámico + Lista Completa USP (01-81).")
 
-if os.path.exists(ASSETS_DIR):
-    archivos_reales = os.listdir(ASSETS_DIR)
-    st.sidebar.success(f"✅ Librería USP conectada: {len(archivos_reales)} archivos.")
-else:
-    st.sidebar.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}")
+if not os.path.exists(ASSETS_DIR):
+    st.error(f"❌ Error: No se encuentra la carpeta {ASSETS_DIR}")
 
-# --- 3. DICCIONARIO BRAILLE ---
-BRAILLE_CHARS = {
+# --- 2. MOTOR DE BRAILLE (TACTILE ENGINE) ---
+# Diccionario Braille Unicode (6 puntos)
+BRAILLE_MAP = {
     'A': [1], 'B': [1,2], 'C': [1,4], 'D': [1,4,5], 'E': [1,5],
     'F': [1,2,4], 'G': [1,2,4,5], 'H': [1,2,5], 'I': [2,4], 'J': [2,4,5],
     'K': [1,3], 'L': [1,2,3], 'M': [1,3,4], 'N': [1,3,4,5], 'O': [1,3,5],
@@ -27,255 +24,314 @@ BRAILLE_CHARS = {
     'U': [1,3,6], 'V': [1,2,3,6], 'W': [2,4,5,6], 'X': [1,3,4,6], 'Y': [1,3,4,5,6], 'Z': [1,3,5,6],
     '1': [1], '2': [1,2], '3': [1,4], '4': [1,4,5], '5': [1,5],
     '6': [1,2,4], '7': [1,2,4,5], '8': [1,2,5], '9': [2,4], '0': [2,4,5],
-    ' ': [], '.': [2,5,6], ',': [2], ':': [2,5], ';': [2,3],
-    '(': [2,3,5,6], ')': [2,3,5,6], '/': [3,4], '-': [3,6]
+    ' ': [], '.': [2,5,6], ',': [2], ':': [2,5], ';': [2,3], '-': [3,6],
+    '(': [2,3,5,6], ')': [2,3,5,6], '/': [3,4], '+': [2,3,5]
 }
 
-# --- 4. MOTOR BRAILLE CON PAGINACIÓN ---
-def dibujar_braille_paginado(pdf, texto_completo, x_inicial, y_inicial):
+def renderizar_braille_espejo(pdf, texto, x_start, y_start):
     """
-    Dibuja Braille espejado. Si se acaba la hoja, crea una nueva automáticamente.
+    Convierte texto a círculos vectoriales (puntos) en modo espejo.
+    Maneja el texto dinámico para que no se repita.
     """
-    # Limpieza de texto
-    texto = ''.join(c for c in unicodedata.normalize('NFD', texto_completo) if unicodedata.category(c) != 'Mn').upper()
+    # 1. Normalización estricta (Mayúsculas sin tildes)
+    texto_limpio = ''.join(
+        c for c in unicodedata.normalize('NFD', texto)
+        if unicodedata.category(c) != 'Mn'
+    ).upper()
     
-    current_x = x_inicial
-    current_y = y_inicial
+    # 2. Configuración de dimensiones (Calibrado para punzón)
+    scale = 1.2
+    r_punto = 0.5 * scale  # Radio
+    w_espacio = 2.5 * scale # Espacio entre puntos H
+    h_espacio = 2.5 * scale # Espacio entre puntos V
+    w_letra = 6.5 * scale   # Ancho celda
+    h_linea = 12.0 * scale  # Salto de línea
+    margen_derecho = 190
     
-    # Configuración de tamaño (OPTIMIZADO PARA ESPACIO)
-    scale = 1.0           # Escala 1.0 es el estándar legible mínimo
-    dot_radius = 0.5 * scale
-    w_dot = 2.3 * scale   # Distancia horizontal entre puntos
-    h_dot = 2.3 * scale   # Distancia vertical entre puntos
-    w_char = 6.0 * scale  # Ancho de celda
-    h_line = 10.0 * scale # Altura de renglón
+    cur_x, cur_y = x_start, y_start
     
-    margin_right = 190    # Margen derecho (mm)
-    margin_bottom = 260   # Margen inferior (mm) - Deja espacio para pie de página
-    margin_top_new_page = 40 # Donde empezar en la nueva hoja
+    # Espejo: 1->4, 2->5, 3->6 (Inversión horizontal de la celda)
+    espejo = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
 
-    # Mapeo Espejo (1<->4, 2<->5, 3<->6)
-    mirror_map = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
-
-    for char in texto:
-        # 1. ¿Cabe en la línea actual?
-        if current_x + w_char > margin_right:
-            current_x = x_inicial     # Reset X
-            current_y += h_line       # Bajar Y (Nuevo renglón)
+    for char in texto_limpio:
+        # Salto de línea automático
+        if cur_x + w_letra > margen_derecho:
+            cur_x = x_start
+            cur_y += h_linea
             
-        # 2. ¿Cabe en la página actual?
-        if current_y + h_line > margin_bottom:
-            pdf.add_page()            # NUEVA PÁGINA
-            
-            # Re-imprimir encabezado de guía en la nueva hoja
-            pdf.set_font("Arial", "I", 10)
-            pdf.cell(0, 10, txt="...continuación Guía Táctil (Braille Espejo)...", ln=True, align='C')
-            
-            current_x = x_inicial     # Reset X
-            current_y = margin_top_new_page # Reset Y arriba
-            
-        puntos = BRAILLE_CHARS.get(char, [])
-        puntos_espejo = [mirror_map[p] for p in puntos]
+        # Obtener puntos del caracter
+        puntos = BRAILLE_MAP.get(char, [])
+        puntos_mirror = [espejo[p] for p in puntos]
         
-        # Dibujar Guía Gris (Celda vacía)
-        pdf.set_fill_color(245, 245, 245)
-        positions = {
-            1: (current_x, current_y),
-            2: (current_x, current_y + h_dot),
-            3: (current_x, current_y + h_dot * 2),
-            4: (current_x + w_dot, current_y),
-            5: (current_x + w_dot, current_y + h_dot),
-            6: (current_x + w_dot, current_y + h_dot * 2),
+        # Dibujar guías (gris claro)
+        pdf.set_fill_color(240, 240, 240)
+        coords = {
+            1: (cur_x, cur_y),
+            2: (cur_x, cur_y + h_espacio),
+            3: (cur_x, cur_y + h_espacio*2),
+            4: (cur_x + w_espacio, cur_y),
+            5: (cur_x + w_espacio, cur_y + h_espacio),
+            6: (cur_x + w_espacio, cur_y + h_espacio*2)
         }
         
-        # Dibujar Puntos Negros (Activos)
+        # Dibujar puntos negros (Donde se punza)
         pdf.set_fill_color(0, 0, 0)
-        for p_num in puntos_espejo:
-            pos = positions[p_num]
-            pdf.circle(pos[0], pos[1], dot_radius, 'F')
+        for p in puntos_mirror:
+            px, py = coords[p]
+            pdf.circle(px, py, r_punto, 'F')
             
-        current_x += w_char
+        cur_x += w_letra
 
-# --- 5. FUNCIONES AUXILIARES ---
-def ruta_imagen_segura(nombre_objetivo):
-    if not nombre_objetivo: return None
-    ruta_exacta = os.path.join(ASSETS_DIR, nombre_objetivo)
-    if os.path.exists(ruta_exacta): return ruta_exacta
-    for archivo_real in os.listdir(ASSETS_DIR):
-        if archivo_real.lower() == nombre_objetivo.lower():
-            return os.path.join(ASSETS_DIR, archivo_real)
+# --- 3. BASE DE DATOS COMPLETA (USP 01-81) ---
+# Organizada lógicamente para los desplegables
+
+MAPA_VIA = {
+    "Vía Oral": "01.GIF",
+    "Masticar": "43.GIF",
+    "Sublingual": "46.GIF",
+    "Disolver en agua": "45.GIF",
+    "Diluir en agua": "44.GIF",
+    "Tomar con agua": "38.GIF", # 38
+    "Gárgaras": "58.GIF",
+    "No tragar": "56.GIF",
+    "Gotas Nariz": "09.GIF",
+    "Uso Nasal (Secuencia)": "10.GIF",
+    "Spray Nasal": "77.GIF",
+    "Inhalador": "71.GIF",
+    "Gotas Ojos": "29.GIF",
+    "Uso Ojos (Secuencia)": "30.GIF",
+    "Gotas Oído": "31.GIF",
+    "Uso Oído (Secuencia)": "32.GIF",
+    "Inyección": "61.GIF",
+    "Vía Rectal": "27.GIF",
+    "Uso Rectal (Secuencia)": "28.GIF",
+    "Vía Vaginal": "25.GIF",
+    "Uso Vaginal (Secuencia)": "26.GIF",
+    "Óvulo Vaginal": "66.GIF"
+}
+
+MAPA_FRECUENCIA = {
+    "--- Seleccionar ---": None,
+    "Mañana (AM)": "67.GIF",
+    "Noche / Al acostarse": "22.GIF",
+    "No tomar de noche": "49.GIF",
+    "2 veces al día": "04.GIF",
+    "2 veces al día (Con comidas)": "03.GIF",
+    "3 veces al día": "16.GIF",
+    "3 veces al día (Con comidas)": "14.GIF",
+    "4 veces al día": "15.GIF",
+    "4 veces al día (+ Dormir)": "13.GIF",
+    "1 hora ANTES de comer": "05.GIF",
+    "1 hora DESPUÉS de comer": "06.GIF",
+    "2 horas ANTES de comer": "07.GIF",
+    "2 horas DESPUÉS de comer": "08.GIF",
+    "Con alimentos": "18.GIF",
+    "Sin alimentos (Estómago vacío)": "19.GIF",
+    "Con leche": "68.GIF",
+    "NO con leche/lácteos": "23.GIF"
+}
+
+MAPA_ALERTAS = {
+    "Venenoso / Tóxico": "81.GIF", # CORREGIDO
+    "No alcohol": "40.GIF",
+    "No conducir (Sueño)": "50.GIF",
+    "No conducir (Mareo)": "72.GIF",
+    "Agitar vigorosamente": "39.GIF",
+    "No agitar": "53.GIF",
+    "Refrigerar": "20.GIF",
+    "No refrigerar": "52.GIF",
+    "No congelar": "51.GIF",
+    "Alejar luz solar": "12.GIF",
+    "No triturar/romper": "33.GIF",
+    "No masticar": "48.GIF",
+    "No compartir": "54.GIF",
+    "Mantener alejado niños": "17.GIF",
+    "No dar a bebés": "64.GIF",
+    "No dar a niños": "65.GIF",
+    "Embarazo: NO usar": "34.GIF",
+    "Embarazo: Consultar": "35.GIF",
+    "Lactancia: NO usar": "36.GIF",
+    "Lactancia: Consultar": "37.GIF",
+    "Flamable": "80.GIF",
+    "Causa somnolencia": "24.GIF",
+    "Causa mareos": "47.GIF",
+    "Llamar al doctor": "42.GIF",
+    "Emergencia": "59.GIF",
+    "Tomar agua extra": "57.GIF",
+    "Lavarse las manos": "41.GIF",
+    "Leer etiqueta": "78.GIF"
+}
+
+# --- 4. FUNCIÓN IMAGEN SEGURA ---
+def get_img_path(filename):
+    if not filename: return None
+    # Intento 1: Exacto
+    path = os.path.join(ASSETS_DIR, filename)
+    if os.path.exists(path): return path
+    # Intento 2: Insensible a mayúsculas
+    for f in os.listdir(ASSETS_DIR):
+        if f.lower() == filename.lower():
+            return os.path.join(ASSETS_DIR, f)
     return None
 
-# --- 6. MAPEOS ---
-MAPA_VIA = {
-    "Vía Oral (Tragar)": "01.GIF", "Masticar": "43.GIF", "Sublingual": "46.GIF",
-    "Disolver en agua": "45.GIF", "Diluir en agua": "44.GIF", "Inhalador": "71.GIF",
-    "Spray Nasal": "77.GIF", "Gotas Nariz": "09.GIF", "Gotas Ojos": "29.GIF",
-    "Gotas Oído": "31.GIF", "Inyección": "61.GIF", "Vía Rectal": "27.GIF",
-    "Vía Vaginal": "25.GIF", "Gárgaras": "58.GIF"
-}
-MAPA_FRECUENCIA = {
-    "--- Seleccionar ---": None, "Mañana (AM)": "67.GIF", "Noche / Hora de dormir": "22.GIF",
-    "2 veces/día": "04.GIF", "2 veces/día (Comidas)": "03.GIF", 
-    "3 veces/día": "16.GIF", "3 veces/día (Comidas)": "14.GIF",
-    "4 veces/día": "15.GIF", "4 veces/día (Comidas)": "13.GIF",
-    "1h antes comer": "05.GIF", "1h después comer": "06.GIF", 
-    "2 horas ANTES de comidas": "07.GIF", "2 horas DESPUÉS de comidas": "08.GIF", 
-    "Con alimentos": "18.GIF", "Estómago vacío": "19.GIF"
-}
-MAPA_ALERTAS = {
-    "No alcohol": "40.GIF", "No conducir (Somnolencia)": "50.GIF", "No conducir (Mareo)": "72.GIF",
-    "No triturar": "33.GIF", "No masticar": "48.GIF", "Agitar vigorosamente": "39.GIF",
-    "Refrigerar": "20.GIF", "No refrigerar": "52.GIF", "No congelar": "51.GIF",
-    "Proteger luz solar": "69.GIF", "No embarazo": "34.GIF", "No lactancia": "36.GIF",
-    "No compartir": "54.GIF", "No fumar": "55.GIF", "Tomar agua adicional": "57.GIF",
-    "Peligro": "81.GIF", "Causa somnolencia": "24.GIF", "No leche ni lácteos": "23.GIF"
-}
-
-# --- 7. GENERADOR PDF ---
-def generar_pdf(paciente, medicamento, dosis, via_key, frecuencia_key, lista_alertas, es_ciego):
+# --- 5. GENERADOR PDF (CORE) ---
+def generar_pdf_final(paciente, med, dosis, via, frec, alertas_list, hacer_braille):
     pdf = FPDF()
     
-    # === PÁGINA 1: VISUAL (Pictogramas) ===
+    # === PÁGINA 1: VISUAL ===
     pdf.add_page()
     
-    # Encabezado
+    # Encabezado (Texto grande arriba)
     pdf.set_font("Arial", "B", 24)
-    pdf.cell(0, 15, txt=f"{medicamento.upper()}", ln=True, align='C')
+    pdf.cell(0, 15, txt=f"{med.upper()}", ln=True, align='C')
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()} | DOSIS: {dosis.upper()}", ln=True, align='C')
-    pdf.line(10, 35, 200, 35)
+    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()}", ln=True, align='C')
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, txt=f"DOSIS: {dosis.upper()}", ln=True, align='C')
+    pdf.line(10, 42, 200, 42)
     
-    # Pictogramas (Texto Arriba)
-    y_bloque_1 = 50 
+    # --- BLOQUE SUPERIOR (VÍA + FREC) ---
+    y_start = 55
     
-    # Vía
-    pdf.set_xy(20, y_bloque_1)
+    # Columna Vía
+    pdf.set_xy(20, y_start)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C')
-    archivo_via = MAPA_VIA.get(via_key)
-    if archivo_via:
-        ruta = ruta_imagen_segura(archivo_via)
-        if ruta:
-            pdf.set_xy(20, y_bloque_1 + 12)
-            pdf.set_font("Arial", "B", 10)
-            pdf.multi_cell(60, 4, txt=via_key.upper(), align='C')
-            pdf.image(ruta, x=35, y=y_bloque_1 + 25, w=30)
+    pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
     
-    # Frecuencia
-    pdf.set_xy(100, y_bloque_1)
+    path_via = get_img_path(MAPA_VIA.get(via))
+    if path_via:
+        # Texto DESCRIPTIVO ARRIBA
+        pdf.set_xy(20, y_start + 10)
+        pdf.set_font("Arial", "B", 10)
+        pdf.multi_cell(60, 5, txt=via.upper(), align='C')
+        # Imagen ABAJO
+        pdf.image(path_via, x=35, y=pdf.get_y() + 2, w=30)
+    
+    # Columna Frecuencia
+    pdf.set_xy(110, y_start)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(60, 10, txt="HORARIO", align='C')
-    archivo_frec = MAPA_FRECUENCIA.get(frecuencia_key)
-    if archivo_frec:
-        ruta = ruta_imagen_segura(archivo_frec)
-        if ruta:
-            pdf.set_xy(100, y_bloque_1 + 12)
-            pdf.set_font("Arial", "B", 10)
-            pdf.multi_cell(60, 4, txt=frecuencia_key.upper(), align='C')
-            pdf.image(ruta, x=115, y=y_bloque_1 + 25, w=30)
+    pdf.cell(60, 10, txt="HORARIO", align='C', ln=1)
+    
+    path_frec = get_img_path(MAPA_FRECUENCIA.get(frec))
+    if path_frec:
+        # Texto DESCRIPTIVO ARRIBA
+        pdf.set_xy(110, y_start + 10)
+        pdf.set_font("Arial", "B", 10)
+        pdf.multi_cell(60, 5, txt=frec.upper(), align='C')
+        # Imagen ABAJO
+        pdf.image(path_frec, x=125, y=pdf.get_y() + 2, w=30)
 
-    # Alertas
-    y_alertas = 115 
-    pdf.set_xy(10, y_alertas)
+    # --- BLOQUE INFERIOR (ALERTAS) ---
+    y_alerts = 125
+    pdf.set_xy(10, y_alerts)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, txt="PRECAUCIONES:", ln=True, align='L')
+    pdf.cell(0, 10, txt="PRECAUCIONES:", ln=1)
     
     x_curr = 20
-    y_curr = y_alertas + 15
-    count = 0
-    for alerta_key in lista_alertas:
-        nombre_archivo = MAPA_ALERTAS.get(alerta_key)
-        if nombre_archivo:
-            ruta = ruta_imagen_segura(nombre_archivo)
-            if ruta:
-                if count == 4: 
-                    x_curr = 20
-                    y_curr += 55
-                    count = 0
-                pdf.set_font("Arial", "B", 8)
-                pdf.set_xy(x_curr - 5, y_curr) 
-                pdf.multi_cell(40, 3, txt=alerta_key.upper(), align='C')
-                pdf.image(ruta, x=x_curr, y=y_curr + 12, w=25)
-                x_curr += 45
-                count += 1
+    y_curr = y_alerts + 15
+    col_count = 0
+    
+    for alerta in alertas_list:
+        path_a = get_img_path(MAPA_ALERTAS.get(alerta))
+        if path_a:
+            # Control de filas (4 por fila)
+            if col_count == 4:
+                x_curr = 20
+                y_curr += 50
+                col_count = 0
+            
+            # Texto ARRIBA
+            pdf.set_xy(x_curr - 5, y_curr)
+            pdf.set_font("Arial", "B", 8)
+            pdf.multi_cell(40, 3, txt=alerta.upper(), align='C')
+            
+            # Imagen ABAJO
+            # Calculamos Y basado en dónde terminó el texto
+            y_img = pdf.get_y() + 2
+            pdf.image(path_a, x=x_curr, y=y_img, w=22)
+            
+            x_curr += 45
+            col_count += 1
 
-    # === PÁGINA 2+: BRAILLE (Multipágina Automática) ===
-    if es_ciego:
-        pdf.add_page() # Primera página de Braille
+    # === PÁGINA 2: BRAILLE (Dinámico Real) ===
+    if hacer_braille:
+        pdf.add_page()
         
-        # Encabezado Braille
         pdf.set_font("Arial", "B", 16)
         pdf.cell(0, 10, txt="GUÍA TÁCTIL (BRAILLE ESPEJO)", ln=True, align='C')
         pdf.set_font("Arial", "", 10)
-        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Punzar puntos negros por el reverso.", align='C')
-        pdf.ln(5)
+        pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Esta hoja contiene la información traducida a puntos invertidos. Coloque sobre superficie blanda y punce los puntos negros.", align='C')
+        pdf.ln(10)
         
-        # Construcción del Texto
-        alertas_str = ", ".join(lista_alertas) if lista_alertas else "NINGUNA"
-        frec_texto = frecuencia_key if frecuencia_key else "NO INDICADO"
+        # CADENA DINÁMICA: Se reconstruye con los datos actuales
+        str_alertas = ", ".join(alertas_list) if alertas_list else "NINGUNA"
+        str_frec = frec if frec else "VER INDICACIONES"
         
-        # Información completa
-        texto_completo = (
-            f"PACIENTE: {paciente}. MEDICAMENTO: {medicamento} {dosis}. "
-            f"VIA: {via_key}. TOMA: {frec_texto}. "
-            f"PRECAUCIONES: {alertas_str}."
+        texto_final = (
+            f"PAC:{paciente}. MED:{med} {dosis}. "
+            f"VIA:{via}. TOMA:{str_frec}. "
+            f"PRE:{str_alertas}."
         )
         
-        # Dibujar Puntos (Con soporte multipágina)
-        braille_x = 10
-        braille_y = 40
-        dibujar_braille_paginado(pdf, texto_completo, braille_x, braille_y)
+        # Renderizar
+        renderizar_braille_espejo(pdf, texto_final, 10, 40)
         
-        # Pie de página (Solo en la última hoja generada)
         pdf.set_y(-15)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 10, txt="Sistema SMEFI - Módulo de Accesibilidad Táctil", align='C')
+        pdf.cell(0, 10, txt="SMEFI System - Módulo Braille", align='C')
 
     return bytes(pdf.output(dest='S'))
 
-# --- 8. INTERFAZ ---
-col1, col2 = st.columns(2)
-with col1:
-    nombre = st.text_input("Paciente", "JUAN PEREZ")
-    med = st.text_input("Medicamento", "AMOXICILINA")
+# --- 6. INTERFAZ DE USUARIO ---
+col1, col2 = st.columns([1, 3])
 with col2:
-    dosis = st.text_input("Dosis", "500 MG")
-    es_ciego = st.toggle("Generar Guía Braille Completa")
+    st.subheader("Datos del Tratamiento")
 
-st.divider()
+with st.container(border=True):
+    c1, c2 = st.columns(2)
+    with c1:
+        p_nombre = st.text_input("Nombre Paciente", "JUAN PEREZ")
+        p_med = st.text_input("Medicamento", "IBUPROFENO")
+    with c2:
+        p_dosis = st.text_input("Dosis", "400 MG")
+        p_braille = st.toggle("Generar Hoja Braille")
 
-c3, c4 = st.columns(2)
-with c3:
-    st.info("ℹ️ Información de Toma")
-    via_sel = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
-    frec_sel = st.selectbox("Frecuencia / Horario", list(MAPA_FRECUENCIA.keys()))
+    st.divider()
     
-    cols_prev = st.columns(2)
-    if via_sel:
-        r = ruta_imagen_segura(MAPA_VIA[via_sel])
-        if r: cols_prev[0].image(r, width=70)
-    
-    if frec_sel:
-        nombre_archivo = MAPA_FRECUENCIA.get(frec_sel)
-        if nombre_archivo:
-            r = ruta_imagen_segura(nombre_archivo)
-            if r: cols_prev[1].image(r, width=70)
+    c3, c4 = st.columns(2)
+    with c3:
+        st.info("ℹ️ Vía y Frecuencia")
+        sel_via = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
+        sel_frec = st.selectbox("Frecuencia", list(MAPA_FRECUENCIA.keys()))
+        
+        # Previas
+        cols = st.columns(2)
+        img1 = get_img_path(MAPA_VIA.get(sel_via))
+        if img1: cols[0].image(img1, width=60)
+        
+        img2 = get_img_path(MAPA_FRECUENCIA.get(sel_frec))
+        if img2: cols[1].image(img2, width=60)
 
-with c4:
-    st.warning("⚠️ Seguridad")
-    alertas_sel = st.multiselect("Seleccione Precauciones:", list(MAPA_ALERTAS.keys()))
-    if alertas_sel:
-        cols = st.columns(4)
-        for i, a in enumerate(alertas_sel):
-            r = ruta_imagen_segura(MAPA_ALERTAS[a])
-            if r: cols[i%4].image(r, width=40)
+    with c4:
+        st.warning("⚠️ Precauciones")
+        sel_alertas = st.multiselect("Seleccione todas las que apliquen:", list(MAPA_ALERTAS.keys()))
+        
+        if sel_alertas:
+            acols = st.columns(4)
+            for i, a in enumerate(sel_alertas):
+                aimg = get_img_path(MAPA_ALERTAS.get(a))
+                if aimg: acols[i%4].image(aimg, width=40)
 
 st.write("")
-if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
+if st.button("GENERAR GUÍA DE IMPRESIÓN", type="primary", use_container_width=True):
     try:
-        pdf_bytes = generar_pdf(nombre, med, dosis, via_sel, frec_sel, alertas_sel, es_ciego)
-        st.success("✅ Guía Generada Exitosamente")
-        st.download_button("📄 DESCARGAR PDF FINAL", pdf_bytes, file_name=f"Guia_{med}.pdf", mime="application/pdf")
+        pdf_data = generar_pdf_final(p_nombre, p_med, p_dosis, sel_via, sel_frec, sel_alertas, p_braille)
+        st.success("✅ Documento creado exitosamente")
+        st.download_button(
+            label="📥 DESCARGAR PDF",
+            data=pdf_data,
+            file_name=f"Guia_{p_med}.pdf",
+            mime="application/pdf"
+        )
     except Exception as e:
         st.error(f"Error técnico: {e}")
