@@ -198,7 +198,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     # NUEVO: Alerta Visual Roja
     pdf.set_font("Arial", "B", 10)
     pdf.set_text_color(220, 0, 0) # Rojo Alerta
-    pdf.cell(0, 5, txt="⚠️ VERIFICAR DOSIS Y MEDICAMENTO ANTES DE ENTREGAR", ln=True, align='C')
+    pdf.cell(0, 5, txt="VERIFICAR DOSIS Y MEDICAMENTO ANTES DE ENTREGAR", ln=True, align='C')
     pdf.set_text_color(0, 0, 0) # Reset color
     
     pdf.ln(2)
@@ -321,7 +321,7 @@ with st.container(border=True):
     ca.caption("⚠️ Verifique ortografía exacta del medicamento.")
     
     dos = cb.text_input("Dosis", value="500 mg")
-    
+    ca.caption("⚠️ Verifique dosis del medicamento.")
     st.markdown("---")
     cc, cd, ce = st.columns(3)
     bra = cc.toggle("Hoja Braille", value=True)
