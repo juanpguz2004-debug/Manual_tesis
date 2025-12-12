@@ -3,20 +3,19 @@ from fpdf import FPDF
 import os
 import unicodedata
 
-# --- 1. CONFIGURACIÓN DE RUTAS ---
+# --- 1. CONFIGURACIÓN E INICIALIZACIÓN ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Final", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 5.0 (Producción):** Braille Grado 1 (Español) + Pictogramas Corregidos.")
+st.markdown("**Versión 5.1 (Estable):** Braille Grado 1 (Números Correctos) + Pictogramas Completos.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error: Verifica que exista la carpeta {ASSETS_DIR}")
 
 # --- 2. MOTOR DE TRADUCCIÓN BRAILLE (BRAILLE ENGINE) ---
-# Mapeo estándar de Español (Grado 1)
-# Los números en Braille usan las mismas letras que a-j pero con un signo numeral antes.
+# Mapeo de letras a puntos (1-6)
 CHAR_TO_DOTS = {
     'a': [1], 'b': [1,2], 'c': [1,4], 'd': [1,4,5], 'e': [1,5],
     'f': [1,2,4], 'g': [1,2,4,5], 'h': [1,2,5], 'i': [2,4], 'j': [2,4,5],
@@ -29,47 +28,47 @@ CHAR_TO_DOTS = {
     '-': [3,6], '/': [3,4], ' ': []
 }
 
-# Mapeo de Números (El sistema Braille usa a-j para 1-0)
+# Mapeo de Números (Sistema Numérico Braille: Prefijo + a-j)
 NUM_TO_LETTER = {
     '1': 'a', '2': 'b', '3': 'c', '4': 'd', '5': 'e',
     '6': 'f', '7': 'g', '8': 'h', '9': 'i', '0': 'j'
 }
-SIGNO_NUMERO = [3, 4, 5, 6] # Prefijo para indicar que siguen números
+SIGNO_NUMERO = [3, 4, 5, 6] # Prefijo indispensable para números
 
 def texto_a_puntos_braille(texto):
     """
-    Convierte una cadena de texto en una lista de listas de puntos.
-    Ej: "10 MG" -> [[3,4,5,6], [1], [2,4,5], [], [1,3,4], [1,2,4,5]]
-    Maneja el signo numérico automáticamente.
+    Convierte texto humano a una lista de patrones de puntos.
+    Ej: "10" -> [[3,4,5,6], [1], [2,4,5]] (Signo # + A + J)
     """
     resultado_puntos = []
-    texto = texto.lower() # Braille farmacéutico básico suele ser unicaso
+    texto = texto.lower() # Estandarizamos a minúsculas para Grado 1
     
     es_numero = False
     
     for char in texto:
         if char.isdigit():
             if not es_numero:
-                resultado_puntos.append(SIGNO_NUMERO) # Abrir modo número
+                resultado_puntos.append(SIGNO_NUMERO) # Activar modo número
                 es_numero = True
-            letra_num = NUM_TO_LETTER[char]
-            resultado_puntos.append(CHAR_TO_DOTS.get(letra_num, []))
+            letra_equivalente = NUM_TO_LETTER[char]
+            resultado_puntos.append(CHAR_TO_DOTS.get(letra_equivalente, []))
         else:
-            if es_numero and char != '.' and char != ',': 
-                es_numero = False # Cerrar modo número si cambia a letra (espacio corta)
+            # Si veníamos de números y ahora es letra o símbolo (menos punto/coma), cerramos modo número
+            if es_numero and char not in ['.', ',']:
+                es_numero = False
             
-            # Normalizar caracteres raros
+            # Normalizar caracteres (quitar acentos raros si no están en mapa)
             char_norm = unicodedata.normalize('NFC', char)
             if char_norm in CHAR_TO_DOTS:
                 resultado_puntos.append(CHAR_TO_DOTS[char_norm])
             else:
-                resultado_puntos.append([]) # Espacio por defecto si no encuentra
+                resultado_puntos.append([]) # Espacio si no se reconoce
                 
     return resultado_puntos
 
 def dibujar_braille_en_pdf(pdf, lista_puntos, x_start, y_start):
     """
-    Dibuja los puntos en el PDF usando lógica de espejo para punzado trasero.
+    Dibuja los puntos vectoriales en el PDF con lógica de espejo.
     """
     # Configuración Física (Estándar Marburg)
     scale = 1.1
@@ -82,26 +81,28 @@ def dibujar_braille_en_pdf(pdf, lista_puntos, x_start, y_start):
     
     cur_x, cur_y = x_start, y_start
     
-    # Espejo (1<->4, 2<->5, 3<->6)
+    # Espejo (1<->4, 2<->5, 3<->6) para punzado reverso
     mirror = {1:4, 2:5, 3:6, 4:1, 5:2, 6:3}
 
     for puntos_caracter in lista_puntos:
-        # Salto de línea
+        # Salto de línea si llegamos al borde derecho
         if cur_x + w_char > margin_right:
             cur_x = x_start
             cur_y += h_line
-            # Control de fin de página (básico)
+            # Si se acaba la hoja verticalmente, paramos (en un sistema real se agregaría pág)
             if cur_y > 270: break 
 
         # Invertir puntos para espejo
         puntos_espejo = [mirror[p] for p in puntos_caracter if p in mirror]
         
-        # Dibujar guías (Gris)
+        # Dibujar guías visuales (Gris claro)
         pdf.set_fill_color(240, 240, 240)
+        
+        # Diccionario de coordenadas CORREGIDO
         coords = {
             1: (cur_x, cur_y),
             2: (cur_x, cur_y + h_dot),
-            3: (current_x := cur_x, cur_y + h_dot * 2)[1], # Truco python 3.8+
+            3: (cur_x, cur_y + h_dot * 2),          # <--- ERROR CORREGIDO AQUÍ
             4: (cur_x + w_dot, cur_y),
             5: (cur_x + w_dot, cur_y + h_dot),
             6: (cur_x + w_dot, cur_y + h_dot * 2)
@@ -110,24 +111,20 @@ def dibujar_braille_en_pdf(pdf, lista_puntos, x_start, y_start):
         # Dibujar puntos negros (Activos)
         pdf.set_fill_color(0, 0, 0)
         for p in puntos_espejo:
-            cx, cy = coords[p] # Corrección de coordenadas fijas
-            # Recalculo explícito para evitar errores de referencia
-            if p==1: cx, cy = cur_x, cur_y
-            elif p==2: cx, cy = cur_x, cur_y + h_dot
-            elif p==3: cx, cy = cur_x, cur_y + h_dot*2
-            elif p==4: cx, cy = cur_x + w_dot, cur_y
-            elif p==5: cx, cy = cur_x + w_dot, cur_y + h_dot
-            elif p==6: cx, cy = cur_x + w_dot, cur_y + h_dot*2
-            
+            cx, cy = coords[p]
             pdf.circle(cx, cy, dot_r, 'F')
             
         cur_x += w_char
 
-# --- 3. BASE DE DATOS ACTUALIZADA ---
+# --- 3. BASE DE DATOS DE IMÁGENES ---
 def get_img(name):
     if not name: return None
     path = os.path.join(ASSETS_DIR, name)
     if os.path.exists(path): return path
+    # Intento insensible a mayúsculas
+    for f in os.listdir(ASSETS_DIR):
+        if f.lower() == name.lower():
+            return os.path.join(ASSETS_DIR, f)
     return None
 
 MAPA_VIA = {
@@ -153,8 +150,8 @@ MAPA_FRECUENCIA = {
 }
 
 MAPA_ALERTAS = {
-    "Venenoso / Tóxico": "81.GIF", # CORREGIDO
-    "No alcohol": "40.GIF", "No conducir (Sueño)": "50.GIF", "No conducir (Mareo)": "72.GIF",
+    "Venenoso / Tóxico": "81.GIF", "No alcohol": "40.GIF", 
+    "No conducir (Sueño)": "50.GIF", "No conducir (Mareo)": "72.GIF",
     "No triturar": "33.GIF", "No masticar": "48.GIF", "Agitar vigorosamente": "39.GIF",
     "Refrigerar": "20.GIF", "No refrigerar": "52.GIF", "No congelar": "51.GIF",
     "Proteger luz solar": "69.GIF", "No embarazo": "34.GIF", "No lactancia": "36.GIF",
@@ -165,7 +162,7 @@ MAPA_ALERTAS = {
 }
 
 # --- 4. GENERADOR DE PDF ---
-def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
+def generar_pdf_final(paciente, med, dosis, via, frec, alertas, hacer_braille):
     pdf = FPDF()
     
     # --- PÁGINA 1: VISUAL ---
@@ -173,11 +170,13 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
     pdf.set_font("Arial", "B", 24)
     pdf.cell(0, 15, txt=f"{med.upper()}", ln=True, align='C')
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()} | DOSIS: {dosis.upper()}", ln=True, align='C')
-    pdf.line(10, 35, 200, 35)
+    pdf.cell(0, 8, txt=f"PACIENTE: {paciente.upper()}", ln=True, align='C')
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(0, 10, txt=f"DOSIS: {dosis.upper()}", ln=True, align='C')
+    pdf.line(10, 42, 200, 42)
     
     # Bloque Vía/Frec
-    y_start = 50
+    y_start = 55
     pdf.set_xy(20, y_start)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
     
@@ -200,7 +199,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
         pdf.image(path2, x=125, y=pdf.get_y()+2, w=30)
 
     # Bloque Alertas
-    y_alert = 120
+    y_alert = 125
     pdf.set_xy(10, y_alert)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 10, txt="PRECAUCIONES:", ln=1)
@@ -227,31 +226,30 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille):
         pdf.multi_cell(0, 5, txt="INSTRUCCIONES: Punzar los puntos negros por el reverso de la hoja.", align='C')
         pdf.ln(10)
         
-        # 1. Construir texto plano completo
+        # 1. Construir texto plano (CADENA DINÁMICA REPARADA)
         str_alert = ", ".join(alertas) if alertas else "NINGUNA"
-        # Usamos texto plano para asegurar que los cambios se reflejen
-        texto_raw = f"PAC:{paciente} MED:{med} {dosis} VIA:{via} TOMA:{frec} PRE:{str_alert}"
+        # Usamos texto plano forzando la actualización
+        texto_raw = f"PAC:{paciente}. MED:{med} {dosis}. VIA:{via}. TOMA:{frec}. PRE:{str_alert}."
         
-        # 2. Traducir a matriz de puntos (Braille Engine)
-        matriz_puntos = texto_a_puntos_braille(texto_raw)
+        # 2. Traducir texto -> lista de puntos
+        lista_puntos_braille = texto_a_puntos_braille(texto_raw)
         
-        # 3. Renderizar en PDF
-        dibujar_braille_en_pdf(pdf, matriz_puntos, 10, 45)
+        # 3. Renderizar puntos en PDF
+        dibujar_braille_en_pdf(pdf, lista_puntos_braille, 10, 45)
         
-        # Debugging visual (Opcional, para verificar cambios)
-        pdf.set_y(-20)
-        pdf.set_font("Arial", "I", 6)
-        pdf.cell(0, 10, txt=f"Braille Source ID: {len(texto_raw)} chars encoded.", align='C')
+        pdf.set_y(-15)
+        pdf.set_font("Arial", "I", 8)
+        pdf.cell(0, 10, txt="SMEFI System - Braille Engine v1.0", align='C')
 
     return bytes(pdf.output(dest='S'))
 
 # --- 5. UI ---
-c1, c2 = st.columns([1, 3])
-with c2: st.subheader("Datos del Tratamiento")
+col1, col2 = st.columns([1, 3])
+with col2: st.subheader("Datos del Tratamiento")
 
 with st.container(border=True):
     c_a, c_b = st.columns(2)
-    p_nom = c_a.text_input("Paciente", "Juan Perez")
+    p_nom = c_a.text_input("Nombre Paciente", "Juan Perez")
     p_med = c_a.text_input("Medicamento", "AMOXICILINA")
     p_dos = c_b.text_input("Dosis", "500 mg")
     p_br = c_b.toggle("Generar Hoja Braille")
@@ -278,7 +276,7 @@ with c4:
 st.write("")
 if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
     try:
-        pdf_bytes = generar_pdf(p_nom, p_med, p_dos, v_sel, f_sel, a_sel, p_br)
+        pdf_bytes = generar_pdf_final(p_nom, p_med, p_dos, v_sel, f_sel, a_sel, p_br)
         st.success("✅ Documento generado correctamente")
         st.download_button("📥 DESCARGAR PDF", pdf_bytes, f"Guia_{p_med}.pdf", "application/pdf")
     except Exception as e:
