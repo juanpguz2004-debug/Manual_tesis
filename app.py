@@ -12,7 +12,7 @@ ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
 
 st.set_page_config(page_title="SMEFI Pro", page_icon="💊", layout="wide")
 st.title("🖨️ Sistema de Dispensación Inclusiva (SMEFI)")
-st.markdown("**Versión 10.5 (Stable Audio):** Corrección de márgenes y URL de audio.")
+st.markdown("**Versión 11.0 (Final):** Audio QR con Alertas incluidas.")
 
 if not os.path.exists(ASSETS_DIR):
     st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
@@ -21,13 +21,13 @@ if not os.path.exists(ASSETS_DIR):
 def generar_qr_audio(texto_a_leer):
     """
     Genera un QR con enlace directo al TTS de Google.
-    CORRECCIÓN: Usa client='gtx' y trunca texto para evitar Error 400.
+    Ajustado para permitir Alertas sin romper la URL (Límite ~250 chars).
     """
-    # Limitar texto a ~150 caracteres para evitar Error 400 (URL demasiado larga)
-    # Priorizamos lo vital: Nombre, Medicamento y Dosis.
-    texto_seguro = texto_a_leer[:180] 
+    # Límite ampliado a 250 para que quepan las alertas.
+    # Si se pasa, corta el final para que el QR siempre funcione.
+    texto_seguro = texto_a_leer[:250] 
     
-    # Endpoint robusto (gtx)
+    # Endpoint gtx (más robusto)
     base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
     
@@ -178,7 +178,6 @@ MAPA_ALERTAS = {
 # --- 5. GENERADOR PDF ---
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr):
     pdf = FPDF()
-    # Margen automático para la parte visual, pero lo desactivaremos para el pie de página
     pdf.set_auto_page_break(auto=True, margin=15)
     
     # --- PÁGINA 1: VISUAL ---
@@ -229,22 +228,19 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
 
     # --- INSERCIÓN DE QR AUDIO ---
     if hacer_qr:
-        # Texto conciso para audio (para no romper la URL)
-        texto_audio = f"Paciente {paciente}. Medicina: {med}. Dosis: {dosis}. Vía: {via}."
+        # Texto Audio Optimizado
+        al_str = ", ".join(alertas) if alertas else "Ninguna"
+        # Frase corta para evitar Error 400
+        texto_audio = f"Paciente {paciente}. {med}. {dosis}. Vía {via}. Alertas: {al_str}."
+        
         qr_file = generar_qr_audio(texto_audio)
         
-        # FIX DE PAGINACIÓN:
-        # Desactivamos el salto automático antes de poner el QR en el pie
         pdf.set_auto_page_break(auto=False)
-        
-        # Posicionar QR abajo a la derecha
         pdf.set_xy(150, 240) 
         pdf.image(qr_file, w=40)
         pdf.set_xy(150, 280)
         pdf.set_font("Arial", "B", 8)
         pdf.cell(40, 5, "ESCANEA PARA OÍR", align='C')
-        
-        # Reactivar salto por si acaso (aunque la siguiente página Braille lo maneja manual)
         pdf.set_auto_page_break(auto=True, margin=15)
 
     # --- PÁGINA 2: BRAILLE ---
@@ -260,8 +256,8 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.multi_cell(0, 5, txt=f"INSTRUCCIONES: {instrucc}", align='C')
         pdf.ln(10)
         
-        al_str = ", ".join(alertas) if alertas else "NINGUNA"
-        texto_tecnico = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERT:{al_str}"
+        al_str_br = ", ".join(alertas) if alertas else "NINGUNA"
+        texto_tecnico = f"PAC:{paciente} MED:{med} DOSIS:{dosis} VIA:{via} TOMA:{frec} ALERT:{al_str_br}"
         
         last_y = BrailleLib.render_on_pdf(pdf, texto_tecnico, 10, 45, espejo)
         
@@ -277,7 +273,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="SMEFI System v10.5", align='C')
+        pdf.cell(0, 5, txt="SMEFI System v11.0", align='C')
 
     return bytes(pdf.output(dest='S'))
 
