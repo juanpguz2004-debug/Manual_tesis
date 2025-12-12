@@ -138,7 +138,7 @@ def registrar_auditoria(profesional, paciente, medicamento, dosis):
             if not existe:
                 writer.writerow(["FECHA_HORA", "PROFESIONAL", "PACIENTE", "MEDICAMENTO", "DOSIS", "ESTADO"])
             ahora = (datetime.utcnow() - timedelta(hours=5)).strftime("%Y-%m-%d %H:%M:%S")
-            writer.writerow([ahora, profesional, paciente, medicamento, dosis, "GENERADO"])
+            writer.writerow([ahora, profesional, "ANONIMIZADO" , medicamento, dosis, "GENERADO"])
     except Exception as e:
         st.error(f"Error al guardar bitácora: {e}")
 
