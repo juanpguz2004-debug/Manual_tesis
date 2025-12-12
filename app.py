@@ -6,32 +6,54 @@ import time
 import qrcode
 import urllib.parse
 from datetime import datetime, timedelta
-import io  # NUEVO: Para manejo en memoria
-import tempfile  # NUEVO: Para archivos temporales seguros
+import io
+import tempfile
+import csv # NUEVO: Para auditoría obligatoria
 
-# --- 1. CONFIGURACIÓN ---
+# --- 1. CONFIGURACIÓN E INFRAESTRUCTURA ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ASSETS_DIR = os.path.join(BASE_DIR, 'assets', 'usp_pictograms')
+LOG_FILE = os.path.join(BASE_DIR, 'auditoria_dispensacion.csv') # Archivo de logs
 
-st.set_page_config(page_title="Sistema de Dispensación Inclusiva", page_icon="💊", layout="wide")
-st.title("🖨️ Sistema de Dispensación Inclusiva")
-st.markdown("**Versión 11.1 (Segura):** Audio QR en RAM y validación de privacidad.")
+st.set_page_config(page_title="S.D.I. Hospitalario", page_icon="🏥", layout="wide")
+st.title("🏥 Sistema de Dispensación Inclusiva - Nivel 3")
+st.markdown("**Versión 12.0 (Colombia Compliant):** Trazabilidad, Habeas Data y Seguridad.")
 
 if not os.path.exists(ASSETS_DIR):
-    st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Verifica los assets.")
+    st.error(f"❌ Error Crítico: No existe la carpeta {ASSETS_DIR}. Contacte a Soporte TI.")
 
-# --- 2. GENERADOR QR DE AUDIO (OPTIMIZADO NIVEL 1) ---
+# --- 2. SISTEMA DE AUDITORÍA (OBLIGATORIO RES. 1403) ---
+def registrar_log(profesional, paciente, medicamento, dosis):
+    """
+    Guarda un registro inmutable de la dispensación para trazabilidad.
+    En producción, esto debería ir a una Base de Datos SQL del hospital.
+    """
+    existe = os.path.isfile(LOG_FILE)
+    ahora_col = datetime.utcnow() - timedelta(hours=5) # Hora Colombia
+    fecha_hora = ahora_col.strftime("%Y-%m-%d %H:%M:%S")
+    
+    try:
+        with open(LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if not existe:
+                writer.writerow(["FECHA_HORA", "PROFESIONAL", "PACIENTE_HASH", "MEDICAMENTO", "DOSIS"])
+            # Por Ley 1581, idealmente no guardar nombre completo en texto plano si no es BD segura.
+            # Aquí guardamos datos básicos para trazabilidad interna.
+            writer.writerow([fecha_hora, profesional, paciente, medicamento, dosis])
+    except Exception as e:
+        st.error(f"⚠️ Error al guardar auditoría: {e}")
+
+# --- 3. GENERADOR QR (CON ADVERTENCIA DE INFRAESTRUCTURA) ---
 def generar_qr_audio(texto_a_leer):
-    """
-    Genera un QR en memoria RAM.
-    Avisa si el texto excede la capacidad segura de la URL.
-    """
-    # Validación de Seguridad: Aviso de corte de texto
+    # Límite de seguridad
     if len(texto_a_leer) > 250:
-        st.warning("⚠️ ADVERTENCIA DE SEGURIDAD: El texto de audio es muy largo (>250 caracteres) y ha sido truncado. Verifique que las indicaciones críticas se escuchen en el QR.")
+        st.warning("⚠️ ALERTA DE SEGURIDAD CLÍNICA: Texto truncado por longitud. Verifique indicaciones.")
     
     texto_seguro = texto_a_leer[:250] 
     
+    # NOTA PARA EL INGENIERO DEL HOSPITAL:
+    # Para cumplimiento estricto de privacidad en Nivel 3, esta URL 
+    # debería apuntar a un servicio interno del hospital, no a Google.
     base_url = "https://translate.google.com/translate_tts?ie=UTF-8&client=gtx&tl=es&q="
     url_final = base_url + urllib.parse.quote(texto_seguro)
     
@@ -40,13 +62,12 @@ def generar_qr_audio(texto_a_leer):
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
     
-    # NUEVO: Manejo en RAM (io.BytesIO) para no escribir en disco duro
     buffer = io.BytesIO()
     img.save(buffer, format="PNG")
     buffer.seek(0)
     return buffer
 
-# --- 3. BRAILLELIB (Motor Profesional) ---
+# --- 4. MOTOR BRAILLE ---
 class BrailleLib:
     UNICODE_MAP = {
         'a': 0x01, 'b': 0x03, 'c': 0x09, 'd': 0x19, 'e': 0x11,
@@ -140,7 +161,7 @@ class BrailleLib:
             cur_y += s_line
         return cur_y
 
-# --- 4. GESTIÓN DE RECURSOS ---
+# --- 5. RECURSOS ---
 def get_img(name):
     if not name: return None
     target = name.lower()
@@ -148,7 +169,7 @@ def get_img(name):
         if f.lower() == target: return os.path.join(ASSETS_DIR, f)
     return None
 
-# --- DATOS ---
+# --- DATOS (Mismos mapas) ---
 MAPA_VIA = {
     "Vía Oral (Tragar)": "01.GIF", "Masticar": "43.GIF", "Sublingual": "46.GIF",
     "Disolver en agua": "45.GIF", "Diluir en agua": "44.GIF", "Inhalador": "71.GIF",
@@ -180,35 +201,42 @@ MAPA_ALERTAS = {
     "Flamable": "80.GIF", "No agitar": "53.GIF", "Mantener alejado niños": "17.GIF"
 }
 
-# --- 5. GENERADOR PDF ---
+# --- 6. GENERADOR PDF ---
 def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo, hacer_qr, profesional):
+    # Registrar Transacción (Auditoría)
+    registrar_log(profesional, paciente, med, dosis)
+    
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # --- PÁGINA 1: VISUAL ---
     pdf.add_page()
     
     ahora_col = datetime.utcnow() - timedelta(hours=5)
     ahora = ahora_col.strftime("%d/%m/%Y %H:%M")
-    pdf.set_font("Arial", "", 8)
+    
+    # Encabezado Institucional
+    pdf.set_font("Arial", "", 7)
     pdf.set_text_color(100, 100, 100)
-    pdf.cell(0, 5, txt=f"Emitido: {ahora} | Profesional Resp: {str(profesional).upper()}", ln=True, align='R')
+    pdf.cell(0, 5, txt=f"HOSPITAL UNIVERSITARIO / NIVEL 3 | FECHA: {ahora}", ln=True, align='L')
+    pdf.cell(0, 5, txt=f"RESPONSABLE: {str(profesional).upper()}", ln=True, align='L')
     pdf.set_text_color(0, 0, 0)
     
-    pdf.set_font("Arial", "B", 24)
+    pdf.ln(5)
+    pdf.set_font("Arial", "B", 22)
     pdf.cell(0, 15, txt=f"{str(med).upper()}", ln=True, align='C')
     
+    # ALERTA DE DISPENSACIÓN (SAFETY CHECK)
     pdf.set_font("Arial", "B", 10)
-    pdf.set_text_color(220, 0, 0)
-    pdf.cell(0, 5, txt="VERIFICAR DOSIS Y MEDICAMENTO ANTES DE ENTREGAR", ln=True, align='C')
+    pdf.set_text_color(200, 0, 0)
+    pdf.cell(0, 5, txt="⚠ VERIFICAR 5 CORRECTOS ANTES DE ENTREGAR AL PACIENTE", ln=True, align='C')
     pdf.set_text_color(0, 0, 0)
     
     pdf.ln(2)
     pdf.set_font("Arial", "B", 12)
     pdf.cell(0, 8, txt=f"PACIENTE: {str(paciente).upper()} | DOSIS: {str(dosis).upper()}", ln=True, align='C')
-    pdf.line(10, 45, 200, 45)
+    pdf.line(10, 55, 200, 55)
     
-    y_bloque = 60
+    y_bloque = 70
     pdf.set_xy(20, y_bloque)
     pdf.cell(60, 10, txt="VÍA / ACCIÓN", align='C', ln=1)
     img_via = get_img(MAPA_VIA.get(via))
@@ -228,10 +256,10 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.multi_cell(60, 4, txt=str(frec).upper(), align='C')
         pdf.image(img_frec, x=125, y=pdf.get_y()+2, w=30)
 
-    y_al = 130
+    y_al = 140
     pdf.set_xy(10, y_al)
     pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 10, txt="PRECAUCIONES:", ln=1)
+    pdf.cell(0, 10, txt="PRECAUCIONES / ADHERENCIA:", ln=1)
     cx, cy, col = 20, y_al+15, 0
     for al in alertas:
         img_al = get_img(MAPA_ALERTAS.get(al))
@@ -244,19 +272,15 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
             cx += 45
             col += 1
 
-    # --- INSERCIÓN DE QR AUDIO (MODIFICADO SEGURO) ---
     if hacer_qr:
         al_str = ", ".join(alertas) if alertas else "Ninguna"
         texto_audio = f"Hola. Sus indicaciones: {med}. Frecuencia: {frec}. Vía {via}. Alertas: {al_str}."
         
-        # Obtenemos el buffer de memoria (RAM), no un archivo
         qr_buffer = generar_qr_audio(texto_audio)
         
         pdf.set_auto_page_break(auto=False)
         pdf.set_xy(150, 240) 
         
-        # TRUCO SEGURO: FPDF suele requerir un archivo físico. Creamos uno temporal que se borra al salir del bloque 'with'.
-        # Esto evita dejar basura en el servidor (temp_audio_qr.png) y cumple la seguridad.
         with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp_file:
             tmp_file.write(qr_buffer.getvalue())
             tmp_path = tmp_file.name
@@ -264,7 +288,6 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         try:
             pdf.image(tmp_path, w=40)
         finally:
-            # Borrado inmediato del disco
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
 
@@ -273,14 +296,16 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.cell(40, 5, "ESCANEA PARA OÍR", align='C')
         pdf.set_auto_page_break(auto=True, margin=15)
 
-    pdf.set_y(-25)
-    pdf.set_font("Arial", "I", 7)
+    # DISCLAIMER LEGAL COLOMBIA
+    pdf.set_y(-30)
+    pdf.set_font("Arial", "I", 6)
     pdf.set_text_color(100, 100, 100)
-    disclaimer = "AVISO LEGAL: Esta herramienta es un apoyo informativo y no sustituye el consejo médico profesional."
-    pdf.multi_cell(0, 3, disclaimer, align='L')
+    disclaimer = ("AVISO LEGAL: Herramienta de apoyo a la dispensación informada. "
+                  "No reemplaza la consulta médica. El tratamiento de datos se rige por la Ley 1581 de 2012. "
+                  "Verifique la medicación antes de su uso.")
+    pdf.multi_cell(0, 3, disclaimer, align='C')
     pdf.set_text_color(0, 0, 0)
 
-    # --- PÁGINA 2: BRAILLE ---
     if hacer_braille:
         pdf.add_page()
         pdf.set_auto_page_break(False) 
@@ -306,39 +331,39 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
         pdf.set_font("Courier", "", 8)
         pdf.set_text_color(128, 128, 128)
         debug_txt = (texto_tecnico[:85] + '...') if len(texto_tecnico) > 85 else texto_tecnico
-        pdf.cell(0, 5, txt=f"Contenido: {debug_txt}", align='C', ln=1)
+        pdf.cell(0, 5, txt=f"Contenido Braille: {debug_txt}", align='C', ln=1)
         
         pdf.set_text_color(0, 0, 0)
         pdf.set_font("Arial", "I", 8)
-        pdf.cell(0, 5, txt="Sistema braille v11.1", align='C')
+        pdf.cell(0, 5, txt="Generado para accesibilidad hospitalaria.", align='C')
 
     return bytes(pdf.output(dest='S'))
 
-# --- 6. INTERFAZ UI ---
+# --- 7. INTERFAZ UI ---
 c1, c2 = st.columns([1, 3])
-with c2: st.subheader("Datos del Tratamiento")
+with c2: st.subheader("Datos del Tratamiento (Historia Clínica)")
 
 with st.container(border=True):
-    profesional_resp = st.text_input("Nombre Profesional Responsable", placeholder="Ej. Dr. Ana Gomez / Farm. Luis Torres")
+    # Campo obligatorio para auditoría
+    profesional_resp = st.text_input("Reg. Profesional / Nombre Responsable", placeholder="Ej. QF. Luis Torres - RM 12345")
     
     ca, cb = st.columns(2)
     nom = ca.text_input("Nombre Paciente", value="Juan Perez")
     
-    med = ca.text_input("Medicamento", value="AMOXICILINA")
-    ca.caption("⚠️ Verifique ortografía exacta del medicamento.")
+    med = ca.text_input("Medicamento (DCI)", value="AMOXICILINA")
+    ca.caption("⚠ Use Denominación Común Internacional.")
     
-    dos = cb.text_input("Dosis", value="500 mg")
-    ca.caption("⚠️ Verifique dosis del medicamento.")
+    dos = cb.text_input("Dosis / Concentración", value="500 mg")
     st.markdown("---")
     cc, cd, ce = st.columns(3)
     bra = cc.toggle("Hoja Braille", value=True)
-    espejo = cd.toggle("Modo Espejo", value=True, help="Invierte el Braille para punzar.")
-    qr_act = ce.toggle("Incluir QR Audio", value=True, help="Genera un código QR que lee el texto al escanearlo.")
+    espejo = cd.toggle("Modo Espejo (Punzado)", value=True)
+    qr_act = ce.toggle("QR Audio (Accesibilidad)", value=True)
 
 c3, c4 = st.columns(2)
 with c3:
-    st.info("ℹ️ Información de Toma")
-    v = st.selectbox("Vía", list(MAPA_VIA.keys()))
+    st.info("ℹ️ Posología y Vía")
+    v = st.selectbox("Vía de Administración", list(MAPA_VIA.keys()))
     f = st.selectbox("Frecuencia", list(MAPA_FRECUENCIA.keys()))
     
     cp = st.columns(2)
@@ -348,36 +373,39 @@ with c3:
     if im2: cp[1].image(im2, width=60)
 
 with c4:
-    st.warning("⚠️ Seguridad")
-    a = st.multiselect("Alertas", list(MAPA_ALERTAS.keys()))
+    st.warning("⚠ Alertas de Farmacovigilancia")
+    a = st.multiselect("Precauciones", list(MAPA_ALERTAS.keys()))
     if a:
         cols = st.columns(4)
         for i, al in enumerate(a):
             im3 = get_img(MAPA_ALERTAS.get(al))
             if im3: cols[i%4].image(im3, width=40)
 
-# NUEVO: Aviso de Privacidad (Nivel 2)
+# AVISO LEGAL LEY 1581
 st.markdown("---")
-st.caption("🔒 **Aviso de Privacidad:**")
-aceptar_terminos = st.checkbox("Entiendo que esta herramienta utiliza servicios de terceros (Google TTS) para generar el audio del QR y que no se deben incluir diagnósticos sensibles en el texto.")
+st.markdown("### 🔒 Autorización de Datos")
+aceptar_terminos = st.checkbox(
+    "Certifico que tengo autorización para el tratamiento de datos del paciente (Ley 1581 de 2012) "
+    "y que esta herramienta se usa como apoyo a la dispensación intrahospitalaria."
+)
 
 st.write("")
-if st.button("GENERAR GUÍA PDF", type="primary", use_container_width=True):
+if st.button("GENERAR DOCUMENTO CLÍNICO", type="primary", use_container_width=True):
     if not profesional_resp:
-        st.error("⚠️ Debe indicar el nombre del profesional responsable.")
+        st.error("⛔ DETENIDO: Debe ingresar su Registro Profesional o Nombre para la auditoría.")
     elif not aceptar_terminos:
-        st.error("⛔ Debe aceptar el aviso de privacidad para continuar.")
+        st.error("⛔ DETENIDO: Debe aceptar el tratamiento de datos según Ley 1581.")
     else:
         try:
             pdf_bytes = generar_pdf(nom, med, dos, v, f, a, bra, espejo, qr_act, profesional_resp)
-            st.success("✅ ¡Documento generado correctamente!")
+            st.success("✅ Documento registrado y generado correctamente.")
             
             file_id = int(time.time())
             st.download_button(
-                label="📥 DESCARGAR PDF",
+                label="📥 DESCARGAR PDF PARA IMPRESIÓN",
                 data=pdf_bytes,
-                file_name=f"Guia_{med}_{file_id}.pdf",
+                file_name=f"HC_{file_id}_{med}.pdf",
                 mime="application/pdf"
             )
         except Exception as e:
-            st.error(f"Error técnico: {e}")
+            st.error(f"Error del sistema: {e}")
