@@ -268,7 +268,7 @@ def generar_pdf(paciente, med, dosis, via, frec, alertas, hacer_braille, espejo,
     pdf.set_font("Arial", "I", 7)
     pdf.set_text_color(100, 100, 100)
     disclaimer = "AVISO LEGAL: Esta herramienta es un apoyo informativo y no sustituye el consejo médico profesional."
-    pdf.multi_cell(0, 3, disclaimer, align='C')
+    pdf.multi_cell(0, 3, disclaimer, align='L')
     pdf.set_text_color(0, 0, 0)
 
     # --- PÁGINA 2: BRAILLE ---
