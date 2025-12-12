@@ -414,7 +414,7 @@ with col_main_1:
     with st.container(border=True):
         st.markdown("### Admisión y Datos")
         profesional_resp = st.text_input("Profesional Responsable", placeholder="Dr. / Q.F. Nombre Apellido")
-        nom = st.text_input("Nombre del Paciente", value="Juan Perez")
+        nom = st.text_input("Nombre del Paciente", placeholder="Nombre del paciente")
 
     # Tarjeta 2: Configuración
     with st.container(border=True):
@@ -429,8 +429,8 @@ with col_main_2:
         st.markdown("### Prescripción Médica")
         
         c_med1, c_med2 = st.columns(2)
-        med = c_med1.text_input("Medicamento", value="AMOXICILINA")
-        dos = c_med2.text_input("Dosis", value="500 mg")
+        med = c_med1.text_input("Medicamento", placeholder="Nombre del medicamento")
+        dos = c_med2.text_input("Dosis", placeholder="Dosis del medicamento")
 
         st.markdown("---")
         
